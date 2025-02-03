@@ -9,7 +9,7 @@ samba-tool group delete "IIS_IUSRS"
 GPO_NAME="Deny_T2_Network"
 DOMAIN="northstar.com"
 OU_PATH="OU=Group_ADMT2,DC=northstar,DC=com"
-
+#GPO empechant le groupe ADMT2 de modifier les configurations réseaux des serveurs
 echo "📌 Création de la GPO $GPO_NAME..."
 samba-tool gpo create "$GPO_NAME"
 
