@@ -36,4 +36,11 @@ echo "📌 Application de la GPO à l'OU Group_ADMT2..."
 samba-tool gpo setoptions "$GPO_NAME" --enable
 samba-tool gpo acl "$GPO_GUID" --assign="$OU_PATH"
 
+
 echo "✅ GPO '$GPO_NAME' appliquée avec succès à $OU_PATH"
+
+echo " 
+samba-tool group addmembers "Administrators" "Group_ADMT2"
+samba-tool group addmembers "Event Log Readers" "Group_ADMT2"
+
+echo
