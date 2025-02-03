@@ -25,3 +25,10 @@ samba-tool gpo setoptions "$GPO_NAME" --enable
 samba-tool gpo acl "$GPO_GUID" --assign="$OU_PATH"
 
 echo "✅ GPO '$GPO_NAME' appliquée avec succès à $OU_PATH"
+
+echo "Ajout des groupes au Tiers..."
+samba-tool group addmembers "Domain Admins" "T0_Admins"
+samba-tool group addmembers "Enterprise Admins" "T0_Admins"
+samba-tool group addmembers "Schema Admins" "T0_Admins"
+
+echo "Fin de la configuration"
