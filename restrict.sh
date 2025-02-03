@@ -1,6 +1,0 @@
-samba-tool group delete "Guests"
-samba-tool group delete "Domain Guests"
-samba-tool group delete "Print Operators"
-samba-tool group delete "Backup Operators"
-samba-tool group delete "Cryptographic Operators"
-samba-tool group delete "IIS_IUSRS"
