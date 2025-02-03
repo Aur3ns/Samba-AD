@@ -41,6 +41,5 @@ echo "✅ GPO '$GPO_NAME' appliquée avec succès à $OU_PATH"
 
 echo " Ajout des groupes aux tiers en cours..."
 samba-tool group addmembers "Administrators" "Group_ADMT2"
-samba-tool group addmembers "Event Log Readers" "Group_ADMT2"
 
 echo
