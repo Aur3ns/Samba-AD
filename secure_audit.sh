@@ -4,7 +4,7 @@
 REALM="NORTHSTAR.COM"
 DOMAIN="NORTHSTAR"
 LOG_FILE="/var/log/samba-setup.log"
-PACKAGES="smbclient audispd-plugins lynis fail2ban auditd osqueryd"
+PACKAGES="smbclient audispd-plugins lynis fail2ban auditd"
 
 echo "🚀 Démarrage de la configuration sécurisée..." | tee -a $LOG_FILE
 
