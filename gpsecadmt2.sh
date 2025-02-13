@@ -7,7 +7,7 @@ OU_PATH="OU=Group_ADMT2,DC=northstar,DC=com"
 create_gpo() {
     local GPO_NAME="$1"
     echo "📌 Création de la GPO $GPO_NAME..."
-    samba-tool gpo create "$GPO_NAME"
+    samba-tool gpo setlink "$GPO_NAME"
     
     local GPO_GUID=$(samba-tool gpo list | grep "$GPO_NAME" | awk '{print $3}')
     local GPO_PATH="/var/lib/samba/sysvol/$DOMAIN/Policies/{$GPO_GUID}"
