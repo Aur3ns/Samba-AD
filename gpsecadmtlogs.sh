@@ -51,7 +51,7 @@ create_gpo() {
     local OU_PATH="$2"
 
     echo "📌 Création de la GPO $GPO_NAME..."
-    samba-tool gpo create "$GPO_NAME"
+    samba-tool gpo setlink "$GPO_NAME"
 
     local GPO_GUID=$(samba-tool gpo list | grep "$GPO_NAME" | awk 'NR==1 {print $3}')
 @@ -67,7 +83,7 @@ GPO_NAME="Restrict_Log_Access"
