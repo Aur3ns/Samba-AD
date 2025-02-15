@@ -9,18 +9,18 @@ fi
 echo "Modification des paramètres régionaux pour Debian..."
 
 # Change la configuration des locales
-sed -i 's/^LANG=.*/LANG=fr_FR.UTF-8/' /etc/default/locale
-sed -i 's/^LANGUAGE=.*/LANGUAGE=fr_FR:fr/' /etc/default/locale
-echo "LC_MESSAGES=fr_FR.UTF-8" >> /etc/default/locale
+sed -i '/^LANG=/c\LANG=fr_FR.UTF-8' /etc/default/locale
+sed -i '/^LANGUAGE=/c\LANGUAGE=fr_FR:fr' /etc/default/locale
+grep -q "^LC_MESSAGES=" /etc/default/locale || echo "LC_MESSAGES=fr_FR.UTF-8" >> /etc/default/locale
 
-# Applique les modifications pour l'utilisateur actuel
-export LANG=fr_FR.UTF-8
-export LANGUAGE=fr_FR:fr
-export LC_MESSAGES=fr_FR.UTF-8
+# Vérifie si xdg-user-dirs-update est installé
+if ! command -v xdg-user-dirs-update &> /dev/null; then
+  echo "Le paquet xdg-user-dirs n'est pas installé. Installation..."
+  apt update && apt install -y xdg-user-dirs
+fi
 
 # Remet les noms des dossiers utilisateurs en anglais
 echo "Modification des noms de dossiers utilisateurs en anglais..."
 LANG=C xdg-user-dirs-update --force
 
 echo "Opération terminée. Veuillez redémarrer votre session pour appliquer les changements."
-
