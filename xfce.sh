@@ -8,16 +8,16 @@ fi
 
 echo "Modification des paramètres régionaux pour Debian..."
 
-# Change la configuration des locales
+# Change la configuration des locales pour que les messages système restent en français
 sed -i '/^LANG=/c\LANG=fr_FR.UTF-8' /etc/default/locale
 sed -i '/^LANGUAGE=/c\LANGUAGE=fr_FR:fr' /etc/default/locale
 grep -q "^LC_MESSAGES=" /etc/default/locale || echo "LC_MESSAGES=fr_FR.UTF-8" >> /etc/default/locale
 
-# Remplace la locale des dossiers utilisateurs par "en_US"
+# Force les noms des dossiers utilisateurs à passer en anglais
 echo "en_US" > ~/.config/user-dirs.locale
 
-# Remet les noms des dossiers utilisateurs en anglais
+# Met à jour les noms des dossiers utilisateurs
 echo "Modification des noms de dossiers utilisateurs en anglais..."
-LANG=C xdg-user-dirs-update --force
+LANG=en_US xdg-user-dirs-update --force
 
 echo "Opération terminée. Veuillez redémarrer votre session pour appliquer les changements."
