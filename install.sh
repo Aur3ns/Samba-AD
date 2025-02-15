@@ -347,3 +347,4 @@ for GROUP in "${GROUPS_TO_DISABLE[@]}"; do
     samba-tool group setmembers "$GROUP" "" | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Membres du groupe '$GROUP' supprimés." | tee -a /var/log/samba-setup.log
 done
+
