@@ -2,49 +2,6 @@
 
 DOMAIN="northstar.com"
 
-echo "🚀 Début de la configuration du domaine $DOMAIN..."
-
-# Liste des OU à créer
-OU_LIST=(
-@@ -12,30 +13,28 @@ OU_LIST=(
-    "OU=Servers_T1,DC=northstar,DC=com"
-)
-
-echo "📌 Création des OU nécessaires..."
-
-for OU in "${OU_LIST[@]}"; do
-    echo "🔍 Vérification de l'existence de $OU..."
-
-    # Vérifier si l'OU existe déjà
-    samba-tool ou list | grep -q "$(echo $OU | cut -d',' -f1 | cut -d'=' -f2)"
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ L'OU $OU existe déjà."
-    else
-        echo "➕ Création de l'OU $OU..."
-        samba-tool ou create "$OU"
-
-        if [ $? -eq 0 ]; then
-            echo "✅ L'OU $OU a été créée avec succès."
-        else
-            echo "❌ Échec de la création de l'OU $OU."
-        fi
-    fi
-done
-
-echo "📌 Suppression des groupes inutiles..."
-GROUPS_TO_DELETE=(
-    "Guests"
-    "Domain Guests"
-    "Print Operators"
-@@ -44,16 +43,33 @@ GROUPS_TO_DELETE=(
-    "IIS_IUSRS"
-)
-
-for GROUP in "${GROUPS_TO_DELETE[@]}"; do
-    samba-tool group delete "$GROUP" && echo "✅ Groupe '$GROUP' supprimé."
-done
-
 # Fonction pour créer une GPO et récupérer son GUID
 create_gpo() {
     local GPO_NAME="$1"
