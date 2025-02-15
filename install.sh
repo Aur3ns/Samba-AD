@@ -19,5 +19,12 @@ echo "Redémarrage des services Samba..." | tee -a /var/log/samba-setup.log
 systemctl start samba-ad-dc | tee -a /var/log/samba-setup.log
 systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
 
+# Installation de osquery
+echo "Téléchargement et installation de osquery..." | tee -a /var/log/samba-setup.log
+wget https://pkg.osquery.io/deb/osquery_5.9.1-1.linux_amd64.deb | tee -a /var/log/samba-setup.log
+dpkg -i osquery_5.9.1-1.linux_amd64.deb | tee -a /var/log/samba-setup.log
+systemctl restart osqueryd | tee -a /var/log/samba-setup.log
+echo "Installation de osqueryd terminée" | tee -a /var/log/samba-setup.log
+
 # Fin de l’installation
-echo "Installation et configuration de Samba terminées !" | tee -a /var/log/samba-setup.log
+echo "Installation et configuration de Samba et osquery terminées !" | tee -a /var/log/samba-setup.log
