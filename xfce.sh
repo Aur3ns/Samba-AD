@@ -13,11 +13,8 @@ sed -i '/^LANG=/c\LANG=fr_FR.UTF-8' /etc/default/locale
 sed -i '/^LANGUAGE=/c\LANGUAGE=fr_FR:fr' /etc/default/locale
 grep -q "^LC_MESSAGES=" /etc/default/locale || echo "LC_MESSAGES=fr_FR.UTF-8" >> /etc/default/locale
 
-# Vérifie si xdg-user-dirs-update est installé
-if ! command -v xdg-user-dirs-update &> /dev/null; then
-  echo "Le paquet xdg-user-dirs n'est pas installé. Installation..."
-  apt update && apt install -y xdg-user-dirs
-fi
+# Remplace la locale des dossiers utilisateurs par "en_US"
+echo "en_US" > ~/.config/user-dirs.locale
 
 # Remet les noms des dossiers utilisateurs en anglais
 echo "Modification des noms de dossiers utilisateurs en anglais..."
