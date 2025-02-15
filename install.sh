@@ -1,9 +1,12 @@
 #!/bin/bash
 
-echo " Démarrage de l'installation et de la configuration" | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de l'installation et de la configuration" | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Mise à jour et installation des paquets nécessaires
-echo "Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 apt update && apt upgrade -y | tee -a /var/log/samba-setup.log
 apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables iptables-save | tee -a /var/log/samba-setup.log
 
@@ -11,14 +14,17 @@ apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fa
 # Vérification de l'installation des paquets
 for pkg in samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables iptables-save; do
     if ! dpkg -l | grep -qw "$pkg"; then
-        echo " Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
         exit 1
     fi
 done
-echo " Tous les paquets ont été installés avec succès !" | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Tous les paquets ont été installés avec succès !" | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Configuration de Kerberos
-echo "Configuration de Kerberos avec des options renforcées..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Kerberos avec des options renforcées..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF >/etc/krb5.conf
 [libdefaults]
     default_realm = NORTHSTAR.COM
@@ -34,17 +40,34 @@ cat <<EOF >/etc/krb5.conf
     permitted_enctypes = aes256-cts aes128-cts
 EOF
 
+# Vérification de la configuration Samba
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de la configuration Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+samba-tool testparm -v | grep 'Loaded services file OK'
+if [ $? -ne 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème dans la configuration Samba !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+    exit 1
+fi
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
+
 # Arrêt et désactivation des services
-echo "Arrêt et désactivation des services smbd, nmbd et winbind..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Arrêt et désactivation des services smbd, nmbd et winbind..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 systemctl stop smbd nmbd winbind | tee -a /var/log/samba-setup.log
 systemctl disable smbd nmbd winbind | tee -a /var/log/samba-setup.log
 
 # Configuration du contrôleur de domaine Samba
-echo "Configuration du contrôleur de domaine Samba..." | tee -a /var/log/samba-setup.log
-samba-tool domain provision --use-rfc2307 --realm=NORTHSTAR.COM --domain=NORTHSTAR --adminpass=@fterTheB@ll33/ --server-role=dc | tee -a /var/log/samba-setup.log
+export SAMBA_ADMIN_PASS='@fterTheB@ll33/'
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration du contrôleur de domaine Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+samba-tool domain provision --use-rfc2307 --realm=NORTHSTAR.COM --domain=NORTHSTAR --adminpass="$SAMBA_ADMIN_PASS" --server-role=dc | tee -a /var/log/samba-setup.log
 
 # Configuration avancée pour Samba
-echo "Durcissement des configurations Samba..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Durcissement des configurations Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF >>/etc/samba/smb.conf
 [global]
     tls enabled = yes
@@ -61,39 +84,71 @@ cat <<EOF >>/etc/samba/smb.conf
     log level = 3
     log file = /var/log/samba/log.%m
     max log size = 5000
-    ldap timeout = 15
+    ldap timeout = 15a
     smb ports = 445
     server signing = mandatory
     client signing = mandatory
     max smbd processes = 500
     allow unsafe cluster upgrade = no
     clustering = no
+    
+    [sysvol]
+    path = /var/lib/samba/sysvol
+    read only = no
 EOF
 
-# Génération des certificats TLS
-echo " Génération des certificats TLS..." | tee -a /var/log/samba-setup.log
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/samba/private/tls.key \
-    -out /etc/samba/private/tls.crt \
-    -subj "/CN=NORTHSTAR.COM"
-    
-# Protection des certificats TLS, seul l'utilisateur root y'a accés
+# Génération de l'Autorité de Certification (CA) et des certificats TLS
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Génération de l'Autorité de Certification (CA) et des certificats TLS..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
+# 1. Créer la clé privée pour l'autorité de certification (CA)
+openssl genrsa -out /etc/samba/private/tls-ca.key 2048
+# 2. Générer le certificat de l'autorité de certification (CA)
+openssl req -x509 -new -nodes -key /etc/samba/private/tls-ca.key -sha256 -days 3650 \
+    -out /etc/samba/private/tls-ca.crt -subj "/C=FR/ST=Paris/L=Paris/O=Northstar CA/OU=IT Department/CN=Northstar Root CA"
+
+# 3. Générer une clé privée et une demande de signature de certificat (CSR) pour Samba
+openssl genrsa -out /etc/samba/private/tls.key 2048
+openssl req -new -key /etc/samba/private/tls.key -out /etc/samba/private/tls.csr -subj "/CN=NORTHSTAR.COM"
+
+# 4. Signer le certificat de Samba avec l'autorité de certification (CA)
+openssl x509 -req -in /etc/samba/private/tls.csr -CA /etc/samba/private/tls-ca.crt -CAkey /etc/samba/private/tls-ca.key \
+    -CAcreateserial -out /etc/samba/private/tls.crt -days 365 -sha256
+
+# Protection des certificats TLS
 chmod 600 /etc/samba/private/tls.*
-echo " Certificats TLS générés et protégés." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Certificats TLS générés et protégés." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Redémarrage des services Samba
-echo "Redémarrage des services Samba..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Redémarrage des services Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 systemctl restart samba-ad-dc | tee -a /var/log/samba-setup.log
 systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
 
+# Vérification de la configuration Samba
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Test de la configuration Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+testparm -s > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème dans smb.conf" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+    exit 1
+fi
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
 # Téléchargement et installation de osquery
-echo "Téléchargement et installation de osquery..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Téléchargement et installation de osquery..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 wget https://pkg.osquery.io/deb/osquery_5.9.1-1.linux_amd64.deb | tee -a /var/log/samba-setup.log
 dpkg -i osquery_5.9.1-1.linux_amd64.deb | tee -a /var/log/samba-setup.log
 systemctl restart osqueryd | tee -a /var/log/samba-setup.log
 
 # Configuration d'osquery
-echo " Configuration d'osquery..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration d'osquery..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF > /etc/osquery/osquery.conf
 {
     "options": {
@@ -122,14 +177,17 @@ EOF
 systemctl enable osqueryd
 systemctl restart osqueryd
 if systemctl is-active --quiet osqueryd; then
-    echo " osqueryd fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - osqueryd fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo " Erreur : osqueryd n'a pas démarré !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : osqueryd n'a pas démarré !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Sécurisation de SSH
-echo " Configuration de SSH..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de SSH..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
@@ -137,14 +195,17 @@ echo "AllowUsers admin" >> /etc/ssh/sshd_config
 
 systemctl restart sshd
 if systemctl is-active --quiet sshd; then
-    echo " SSH est sécurisé et fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - SSH est sécurisé et fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo " Erreur : SSH n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : SSH n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Configuration de Fail2Ban pour Samba
-echo " Configuration de Fail2Ban..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF > /etc/fail2ban/jail.d/samba.conf
 [samba]
 enabled = true
@@ -157,14 +218,17 @@ EOF
 
 systemctl restart fail2ban
 if systemctl is-active --quiet fail2ban; then
-    echo " Fail2Ban fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Fail2Ban fonctionne !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo " Erreur : Fail2Ban n'a pas démarré !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fail2Ban n'a pas démarré !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Configuration d'auditd pour surveiller Samba et Kerberos
-echo " Configuration d'auditd..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration d'auditd..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF > /etc/audit/rules.d/audit.rules
 -w /etc/ -p wa -k etc-changes
 -w /var/log/samba/ -p wa -k samba-logs
@@ -175,20 +239,26 @@ EOF
 
 systemctl restart auditd
 if systemctl is-active --quiet auditd; then
-    echo " auditd fonctionne et surveille Samba et Kerberos !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - auditd fonctionne et surveille Samba et Kerberos !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo " Erreur : auditd n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : auditd n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Exécution de Lynis pour l'audit du système
-echo " Exécution de Lynis pour l'audit du système..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Exécution de Lynis pour l'audit du système..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 lynis audit system | tee -a /var/log/lynis-audit.log
 
 # Vérifications finales de Samba
-echo " Vérification de Samba..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de Samba..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 samba-tool domain info | tee -a /var/log/samba-setup.log
 
 # Fin de l’installation
-echo " Installation de Samba et configuration du domaine terminée ! " | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Installation de Samba et configuration du domaine terminée ! " | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
 
