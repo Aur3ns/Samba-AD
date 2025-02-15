@@ -275,21 +275,26 @@ echo "====================" | tee -a /var/log/samba-setup.log
 
 # Création des utilisateurs et attributions aux groupes
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des utilisateurs et attribution aux groupes en cours..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 
 PASSWORD_HUGO=$(openssl rand -base64 16)
 samba-tool user create Hugo_ADMT0 "$PASSWORD_HUGO" | tee -a /var/log/samba-setup.log
 samba-tool group addmembers Group_ADMT0 Hugo_ADMT0 | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 
 PASSWORD_VOLTAIRE=$(openssl rand -base64 16)
 samba-tool user create Voltaire_ADMT1 "$PASSWORD_VOLTAIRE" | tee -a /var/log/samba-setup.log
 samba-tool group addmembers Group_ADMT1 Voltaire_ADMT1 | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 
 PASSWORD_CLEMENCEAU=$(openssl rand -base64 16)
 samba-tool user create Clemenceau_ADMT2 "$PASSWORD_CLEMENCEAU" | tee -a /var/log/samba-setup.log
 samba-tool group addmembers Group_ADMT2 Clemenceau_ADMT2 | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Sauvegarde des mots de passe générés
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Sauvegarde des mots de passe générés..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 echo "Hugo_ADMT0 : $PASSWORD_HUGO" >> /root/northstar_users.txt
 echo "Voltaire_ADMT1 : $PASSWORD_VOLTAIRE" >> /root/northstar_users.txt
 echo "Clemenceau_ADMT2 : $PASSWORD_CLEMENCEAU" >> /root/northstar_users.txt
@@ -297,6 +302,7 @@ chmod 600 /root/northstar_users.txt
 
 # Application des politiques de mots de passe sécurisées
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Application des politiques de mots de passe sécurisées en cours..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 samba-tool domain passwordsettings set --complexity=on
 samba-tool domain passwordsettings set --history-length=24
 samba-tool domain passwordsettings set --min-pwd-age=1
@@ -308,11 +314,13 @@ samba-tool domain passwordsettings set --reset-account-lockout-after=15
 
 # Désactivation des comptes inutilisés
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des comptes inutilisés et vulnérable..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 samba-tool user disable guest
 samba-tool user setpassword guest --random
 
 # Création des unités d'organisation (OU)
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des unités d'organisation (OU)..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 OU_LIST=(
     "OU=NS,OU=Group_ADMT0,DC=northstar,DC=com"
     "OU=NS,OU=Group_ADMT1,DC=northstar,DC=com"
@@ -323,17 +331,21 @@ OU_LIST=(
 
 for OU in "${OU_LIST[@]}"; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de l'existence de $OU..." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     samba-tool ou list | grep -q "$(echo $OU | cut -d',' -f1 | cut -d'=' -f2)"
     if [ $? -eq 0 ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - L'OU $OU existe déjà." | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
     else
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'OU $OU..." | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
         samba-tool ou create "$OU" | tee -a /var/log/samba-setup.log
     fi
 done
 
 # Désactivation des groupes inutiles
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des groupes inutiles..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 GROUPS_TO_DISABLE=(
     "Guests"
     "Domain Guests"
@@ -344,7 +356,9 @@ GROUPS_TO_DISABLE=(
 
 for GROUP in "${GROUPS_TO_DISABLE[@]}"; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des permissions pour le groupe '$GROUP'..." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     samba-tool group setmembers "$GROUP" "" | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Membres du groupe '$GROUP' supprimés." | tee -a /var/log/samba-setup.log
 done
 
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Conbfiguration Terminée"
