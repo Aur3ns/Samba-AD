@@ -45,7 +45,7 @@ EOF
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de la configuration Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-ERROR_LOG=$(samba-tool testparm -v 2>&1 | grep -v 'Loaded services file OK')
+ERROR_LOG=$(samba-tool testparm 2>&1 | grep -E 'ERROR|WARNING')
 
 if [ -n "$ERROR_LOG" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème détecté dans la configuration Samba !" | tee -a /var/log/samba-setup.log
