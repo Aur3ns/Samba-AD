@@ -122,6 +122,7 @@ cat <<EOF >>/etc/samba/smb.conf
     server max protocol = SMB3
     smb encrypt = required
     disable netbios = yes
+    dns forwarder = 8.8.8.8
     restrict anonymous = 2
     ldap server require strong auth = yes
     log level = 3
