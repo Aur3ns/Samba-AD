@@ -253,7 +253,6 @@ else
 fi
 echo "====================" | tee -a /var/log/samba-setup.log
 
-
 # Configuration de Fail2Ban pour Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban pour Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
@@ -270,7 +269,7 @@ bantime = 600
 findtime = 600
 EOF
 
-# Vérification de l'existence du fichier de filtre pour Samba
+# Vérification et création du fichier de filtre pour Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification du fichier de filtre pour Samba..." | tee -a /var/log/samba-setup.log
 if [ ! -f /etc/fail2ban/filter.d/samba.conf ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier de filtre manquant, création du fichier..." | tee -a /var/log/samba-setup.log
@@ -282,6 +281,12 @@ ignoreregex =
 EOF
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier de filtre déjà présent." | tee -a /var/log/samba-setup.log
+fi
+
+# Vérification du socket Fail2Ban
+if [ -S /var/run/fail2ban/fail2ban.sock ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression du fichier de socket existant..." | tee -a /var/log/samba-setup.log
+    rm -f /var/run/fail2ban/fail2ban.sock
 fi
 
 # Redémarrage de Fail2Ban
@@ -298,7 +303,7 @@ fi
 
 # Vérification des prisons Fail2Ban
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification des prisons Fail2Ban..." | tee -a /var/log/samba-setup.log
-fail2ban-client status samba | tee -a /var/log/samba-setup.log
+fail2ban-client status samba | tee -a /var/log/samba-setup.log || echo " Impossible de vérifier la prison Samba." | tee -a /var/log/samba-setup.log
 
 echo "====================" | tee -a /var/log/samba-setup.log
 
@@ -440,12 +445,20 @@ samba-tool domain passwordsettings set --reset-account-lockout-after=15
 # Désactivation des comptes inutilisés
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des comptes inutilisés..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-samba-tool user disable guest | tee -a /var/log/samba-setup.log
-samba-tool user setpassword guest --random | tee -a /var/log/samba-setup.log
+
+if samba-tool user show guest > /dev/null 2>&1; then
+    samba-tool user disable guest | tee -a /var/log/samba-setup.log
+    samba-tool user setpassword guest --random | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Compte 'guest' désactivé avec succès." | tee -a /var/log/samba-setup.log
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Compte 'guest' introuvable ou déjà désactivé." | tee -a /var/log/samba-setup.log
+fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Désactivation des groupes inutiles
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des groupes inutiles..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+
 GROUPS_TO_DISABLE=(
     "Guests"
     "Domain Guests"
@@ -455,24 +468,26 @@ GROUPS_TO_DISABLE=(
 )
 
 for GROUP in "${GROUPS_TO_DISABLE[@]}"; do
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression des membres du groupe '$GROUP'..." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
-    MEMBERS=$(samba-tool group listmembers "$GROUP" 2>/dev/null)
-    if [ -z "$MEMBERS" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Le groupe '$GROUP' est déjà vide." | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Traitement du groupe '$GROUP'..." | tee -a /var/log/samba-setup.log
+    if samba-tool group show "$GROUP" > /dev/null 2>&1; then
+        MEMBERS=$(samba-tool group listmembers "$GROUP" 2>/dev/null)
+        if [ -z "$MEMBERS" ]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Le groupe '$GROUP' est déjà vide." | tee -a /var/log/samba-setup.log
+        else
+            for MEMBER in $MEMBERS; do
+                samba-tool group removemembers "$GROUP" "$MEMBER" | tee -a /var/log/samba-setup.log
+                echo "$(date '+%Y-%m-%d %H:%M:%S') - Membre '$MEMBER' supprimé du groupe '$GROUP'." | tee -a /var/log/samba-setup.log
+            done
+        fi
     else
-        for MEMBER in $MEMBERS; do
-            samba-tool group removemembers "$GROUP" "$MEMBER" | tee -a /var/log/samba-setup.log
-            echo "$(date '+%Y-%m-%d %H:%M:%S') - Membre '$MEMBER' supprimé du groupe '$GROUP'." | tee -a /var/log/samba-setup.log
-            echo "====================" | tee -a /var/log/samba-setup.log
-        done
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Le groupe '$GROUP' n'existe pas." | tee -a /var/log/samba-setup.log
     fi
     echo "====================" | tee -a /var/log/samba-setup.log
 done
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Terminée avec succès !" | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration terminée avec succès !" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Fin de la Configuration" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
