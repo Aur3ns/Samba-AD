@@ -9,11 +9,11 @@ echo "====================" | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 apt update && apt upgrade -y | tee -a /var/log/samba-setup.log
-apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables | tee -a /var/log/samba-setup.log
+apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server | tee -a /var/log/samba-setup.log
 
 
 # Vérification de l'installation des paquets
-for pkg in samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables; do
+for pkg in samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server; do
     if ! dpkg -l | grep -qw "$pkg"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
         echo "====================" | tee -a /var/log/samba-setup.log
@@ -192,22 +192,52 @@ else
 fi
 
 # Sécurisation de SSH
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de SSH..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification et configuration de SSH..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-echo "AllowUsers admin" >> /etc/ssh/sshd_config
 
-systemctl restart sshd
-if systemctl is-active --quiet sshd; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - SSH est sécurisé et fonctionne !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+# Vérification et installation de OpenSSH Server si nécessaire
+if ! dpkg -l | grep -qw openssh-server; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server n'est pas installé. Installation en cours..." | tee -a /var/log/samba-setup.log
+    apt update && apt install -y openssh-server | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server installé avec succès." | tee -a /var/log/samba-setup.log
+fi
+
+# Vérification de l'existence du fichier de configuration
+if [ -f /etc/ssh/sshd_config ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de /etc/ssh/sshd_config..." | tee -a /var/log/samba-setup.log
+
+    sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+    echo "AllowUsers admin" >> /etc/ssh/sshd_config
+
+    # Détection du nom du service SSH (ssh ou sshd)
+    if systemctl list-units --type=service | grep -q 'ssh.service'; then
+        SERVICE_NAME="ssh"
+    elif systemctl list-units --type=service | grep -q 'sshd.service'; then
+        SERVICE_NAME="sshd"
+    else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Service SSH non trouvé !" | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
+        exit 1
+    fi
+
+    # Redémarrage du service SSH
+    systemctl restart $SERVICE_NAME
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - SSH est sécurisé et fonctionne !" | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
+    else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : SSH n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+        echo "====================" | tee -a /var/log/samba-setup.log
+        exit 1
+    fi
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : SSH n'a pas redémarré !" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fichier /etc/ssh/sshd_config non trouvé !" | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+
 
 # Configuration de Fail2Ban pour Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban..." | tee -a /var/log/samba-setup.log
