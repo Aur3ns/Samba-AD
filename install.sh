@@ -69,6 +69,8 @@ systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
 systemctl restart samba-ad-dc | tee -a /var/log/samba-setup.log
 
 # Configuration du contrôleur de domaine Samba
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression du fichier de configuration par défaut" 
+rm /etc/samba/smb.conf
 export SAMBA_ADMIN_PASS='@fterTheB@ll33/'
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration du contrôleur de domaine Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
@@ -109,6 +111,8 @@ EOF
 # Génération de l'Autorité de Certification (CA) et des certificats TLS
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Génération de l'Autorité de Certification (CA) et des certificats TLS..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+mkdir -p /etc/samba/private # Création et sécurisation du dossier ou seront hébergés les certificats
+chmod 700 /etc/samba/private
 
 # 1. Créer la clé privée pour l'autorité de certification (CA)
 openssl genrsa -out /etc/samba/private/tls-ca.key 2048
