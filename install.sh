@@ -43,12 +43,17 @@ EOF
 # Vérification de la configuration Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de la configuration Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-samba-tool testparm -v | grep 'Loaded services file OK'
-if [ $? -ne 0 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème dans la configuration Samba !" | tee -a /var/log/samba-setup.log
+
+ERROR_LOG=$(samba-tool testparm -v 2>&1 | grep -v 'Loaded services file OK')
+
+if [ -n "$ERROR_LOG" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème détecté dans la configuration Samba !" | tee -a /var/log/samba-setup.log
+    echo "Détails de l'erreur :" | tee -a /var/log/samba-setup.log
+    echo "$ERROR_LOG" | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
