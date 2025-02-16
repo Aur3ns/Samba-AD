@@ -4,16 +4,14 @@ rm /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de l'installation et de la configuration" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-
 # Mise à jour et installation des paquets nécessaires
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 apt update && apt upgrade -y | tee -a /var/log/samba-setup.log
-apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server | tee -a /var/log/samba-setup.log
-
+apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd | tee -a /var/log/samba-setup.log
 
 # Vérification de l'installation des paquets
-for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server; do
+for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd; do
     if ! dpkg -l | grep -qw "$pkg"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
         echo "====================" | tee -a /var/log/samba-setup.log
@@ -22,6 +20,72 @@ for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins 
 done
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Tous les paquets ont été installés avec succès !" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+
+# Configuration GRUB avec mot de passe
+echo "[*] Configuration de GRUB avec mot de passe..."
+GRUB_PASSWORD="N@rthSt@r33<:"  
+echo -e "set superusers=\"root\"\npassword_pbkdf2 root $(grub-mkpasswd-pbkdf2 <<< "$GRUB_PASSWORD" | grep -oP 'grub.pbkdf2.sha512.*')" > /etc/grub.d/40_custom
+update-grub
+
+# Renforcement des permissions des fichiers système sensibles
+echo "[*] Renforcement des permissions des fichiers critiques..."
+chown root:root /etc/passwd /etc/shadow /etc/group /etc/gshadow
+chmod 600 /etc/shadow /etc/gshadow
+chmod 644 /etc/passwd /etc/group
+
+# Sécurisation des partitions
+echo "[*] Sécurisation des partitions (/tmp, /var)..."
+cat <<EOF >> /etc/fstab
+/tmp    /tmp    tmpfs   defaults,noexec,nosuid,nodev  0 0
+/var    /var    tmpfs   defaults,noexec,nosuid,nodev  0 0
+EOF
+mount -o remount /tmp
+mount -o remount /var
+
+# Configuration PAM pour renforcer les mots de passe
+echo "[*] Configuration de PAM pour renforcer les mots de passe..."
+PAM_CONFIG="/etc/security/pwquality.conf"
+echo "minlen = 14" >> $PAM_CONFIG
+echo "minclass = 4" >> $PAM_CONFIG
+echo "retry = 3" >> $PAM_CONFIG
+
+# Renforcement des paramètres sysctl
+echo "[*] Renforcement des paramètres sysctl..."
+SYSCTL_CONFIG="/etc/sysctl.d/99-hardening.conf"
+cat <<EOF > $SYSCTL_CONFIG
+kernel.randomize_va_space = 2
+kernel.kptr_restrict = 2
+kernel.yama.ptrace_scope = 2
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+net.ipv4.tcp_syncookies = 1
+net.ipv4.conf.all.rp_filter = 1
+EOF
+sysctl --system
+
+# Désactivation des protocoles réseau inutilisés
+echo "[*] Désactivation des protocoles réseau inutilisés..."
+modprobe -r dccp sctp rds tipc
+
+# Installation et configuration de chrony
+echo "[*] Configuration de chrony pour la synchronisation de l’heure..."
+systemctl enable chrony
+systemctl start chrony
+
+# Activation des rapports logwatch
+echo "[*] Configuration de logwatch..."
+logwatch --detail high --mailto root --range today
+
+# Vérification des rootkits
+echo "[*] Analyse du système pour détecter des rootkits..."
+rkhunter --update
+rkhunter --checkall
+chkrootkit
 
 # Configuration de Kerberos
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Kerberos avec des options renforcées..." | tee -a /var/log/samba-setup.log
@@ -200,59 +264,61 @@ else
 fi
 echo "====================" | tee -a /var/log/samba-setup.log
 
-# Sécurisation de SSH
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification et configuration de SSH..." | tee -a /var/log/samba-setup.log
+
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de la sécurisation de SSH..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-# Vérification et installation de OpenSSH Server si nécessaire
+# Vérification de l'installation d'OpenSSH Server
 if ! dpkg -l | grep -qw openssh-server; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server n'est pas installé. Installation en cours..." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
-    apt update && apt install -y openssh-server | tee -a /var/log/samba-setup.log
+    apt update && apt install -y openssh-server libpam-winbind libnss-winbind sssd | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server installé avec succès." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
 fi
-echo "====================" | tee -a /var/log/samba-setup.log
 
-# Vérification de l'existence du fichier de configuration
-if [ -f /etc/ssh/sshd_config ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de /etc/ssh/sshd_config..." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+# Vérification de l'existence du fichier de configuration SSH
+SSH_CONFIG="/etc/ssh/sshd_config"
+if [ -f "$SSH_CONFIG" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de $SSH_CONFIG..." | tee -a /var/log/samba-setup.log
 
-    sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-    sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    echo "AllowUsers admin" >> /etc/ssh/sshd_config
+    # Modifications de la configuration SSH pour sécurisation
+    sed -i 's/#\?PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
+    sed -i 's/#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' "$SSH_CONFIG"
+    sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/#\?X11Forwarding.*/X11Forwarding no/' "$SSH_CONFIG"
+    sed -i 's/#\?AllowTcpForwarding.*/AllowTcpForwarding no/' "$SSH_CONFIG"
+    sed -i 's/#\?ClientAliveCountMax.*/ClientAliveCountMax 2/' "$SSH_CONFIG"
+    sed -i 's/#\?Compression.*/Compression no/' "$SSH_CONFIG"
 
-    # Détection du nom du service SSH (ssh ou sshd)
-    if systemctl list-units --type=service | grep -q 'ssh.service'; then
-        SERVICE_NAME="ssh"
-    elif systemctl list-units --type=service | grep -q 'sshd.service'; then
-        SERVICE_NAME="sshd"
-    else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Service SSH non trouvé !" | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
-        exit 1
+    # Ajout de la directive AllowGroups pour limiter l'accès SSH au groupe Samba NORTHSTAR\Group_ADMT0
+    if grep -q "^AllowUsers" "$SSH_CONFIG"; then
+        sed -i '/^AllowUsers/d' "$SSH_CONFIG"
     fi
-    echo "====================" | tee -a /var/log/samba-setup.log
+    if grep -q "^AllowGroups" "$SSH_CONFIG"; then
+        sed -i 's/^AllowGroups.*/AllowGroups NORTHSTAR\\Group_ADMT0/' "$SSH_CONFIG"
+    else
+        echo "AllowGroups NORTHSTAR\\Group_ADMT0" >> "$SSH_CONFIG"
+    fi
 
     # Redémarrage du service SSH
-    systemctl restart $SERVICE_NAME
-    if systemctl is-active --quiet $SERVICE_NAME; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Redémarrage du service SSH..." | tee -a /var/log/samba-setup.log
+    systemctl restart sshd
+
+    # Vérification du statut du service
+    if systemctl is-active --quiet sshd; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - SSH est sécurisé et fonctionne !" | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
     else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : SSH n'a pas redémarré !" | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : SSH n'a pas redémarré correctement !" | tee -a /var/log/samba-setup.log
         exit 1
     fi
-    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fichier /etc/ssh/sshd_config non trouvé !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fichier $SSH_CONFIG non trouvé !" | tee -a /var/log/samba-setup.log
     exit 1
 fi
-echo "====================" | tee -a /var/log/samba-setup.log
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Sécurisation de SSH terminée." | tee -a /var/log/samba-setup.log
+
+
 
 # Configuration de Fail2Ban pour Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban pour Samba..." | tee -a /var/log/samba-setup.log
@@ -489,6 +555,10 @@ done
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration terminée avec succès !" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
+# Nettoyage final
+echo "[*] Nettoyage des paquets obsolètes..."
+apt autoremove -y
+apt autoclean -y
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Fin de la Configuration" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
