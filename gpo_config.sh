@@ -38,6 +38,7 @@ create_gpo() {
 # Fonction : apply_gpo_to_ou
 # Applique une GPO à une ou plusieurs OUs
 ########################################################
+# Applique la GPO à une OU spécifique
 apply_gpo_to_ou() {
     local GPO_NAME="$1"
     local GPO_GUID="$2"
@@ -45,10 +46,10 @@ apply_gpo_to_ou() {
     local OUs=("$@")
 
     for OU_PATH in "${OUs[@]}"; do
-        echo "📌 Application de la GPO '$GPO_NAME' à l'OU '$OU_PATH'..." | tee -a "$LOG_FILE"
-        samba-tool gpo acl "$GPO_GUID" --assign="$OU_PATH" 2>&1 | tee -a "$LOG_FILE"
+        echo " Lien de la GPO '$GPO_NAME' à l'OU '$OU_PATH'..." | tee -a "$LOG_FILE"
+        samba-tool gpo setlink "$OU_PATH" "$GPO_NAME" 2>&1 | tee -a "$LOG_FILE"
         if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            echo "❌ Erreur : Impossible d'appliquer la GPO '$GPO_NAME' à l'OU '$OU_PATH' !" | tee -a "$LOG_FILE"
+            echo " Erreur : Impossible de lier la GPO '$GPO_NAME' à l'OU '$OU_PATH' !" | tee -a "$LOG_FILE"
             exit 1
         fi
     done
