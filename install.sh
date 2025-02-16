@@ -13,7 +13,7 @@ apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plug
 
 
 # Vérification de l'installation des paquets
-for pkg in samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server; do
+for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server; do
     if ! dpkg -l | grep -qw "$pkg"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
         echo "====================" | tee -a /var/log/samba-setup.log
@@ -66,6 +66,8 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - Arrêt et désactivation des services smbd,
 echo "====================" | tee -a /var/log/samba-setup.log
 systemctl stop smbd nmbd winbind | tee -a /var/log/samba-setup.log
 systemctl disable smbd nmbd winbind | tee -a /var/log/samba-setup.log
+systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
+systemctl restart samba-ad-dc | tee -a /var/log/samba-setup.log
 
 # Configuration du contrôleur de domaine Samba
 export SAMBA_ADMIN_PASS='@fterTheB@ll33/'
