@@ -54,29 +54,61 @@ if [ -n "$ERROR_LOG" ]; then
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
-echo "====================" | tee -a /var/log/samba-setup.log
-
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-
-# Arrêt et désactivation des services
+# Arrêt et désactivation des services non nécessaires
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Arrêt et désactivation des services smbd, nmbd et winbind..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-systemctl stop smbd nmbd winbind | tee -a /var/log/samba-setup.log
-systemctl disable smbd nmbd winbind | tee -a /var/log/samba-setup.log
-systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
-systemctl restart samba-ad-dc | tee -a /var/log/samba-setup.log
+systemctl stop smbd nmbd winbind
+systemctl disable smbd nmbd winbind
+systemctl enable samba-ad-dc
+systemctl restart samba-ad-dc
 
 # Configuration du contrôleur de domaine Samba
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression du fichier de configuration par défaut" 
-rm /etc/samba/smb.conf
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression du fichier de configuration par défaut s'il existe." | tee -a /var/log/samba-setup.log
+if [ -f /etc/samba/smb.conf ]; then
+    rm /etc/samba/smb.conf
+fi
+
 export SAMBA_ADMIN_PASS='@fterTheB@ll33/'
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration du contrôleur de domaine Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 samba-tool domain provision --use-rfc2307 --realm=NORTHSTAR.COM --domain=NORTHSTAR --adminpass="$SAMBA_ADMIN_PASS" --server-role=dc | tee -a /var/log/samba-setup.log
 
-# Configuration avancée pour Samba
+# Vérification du succès du provisionnement
+if [ $? -ne 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Échec du provisionnement Samba !" | tee -a /var/log/samba-setup.log
+    exit 1
+fi
+
+# Génération de l'Autorité de Certification (CA) et des certificats TLS
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Génération de l'Autorité de Certification (CA) et des certificats TLS..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+mkdir -p /etc/samba/private
+chmod 700 /etc/samba/private
+
+# 1. Clé privée pour l'autorité de certification (CA)
+openssl genrsa -out /etc/samba/private/tls-ca.key 2048
+# 2. Certificat de l'autorité de certification (CA)
+openssl req -x509 -new -nodes -key /etc/samba/private/tls-ca.key -sha256 -days 3650 \
+    -out /etc/samba/private/tls-ca.crt -subj "/C=FR/ST=Paris/L=Paris/O=Northstar CA/OU=IT Department/CN=Northstar Root CA"
+
+# 3. Clé privée et CSR pour Samba
+openssl genrsa -out /etc/samba/private/tls.key 2048
+openssl req -new -key /etc/samba/private/tls.key -out /etc/samba/private/tls.csr -subj "/CN=NORTHSTAR.COM"
+
+# 4. Signer le certificat de Samba avec le CA
+openssl x509 -req -in /etc/samba/private/tls.csr -CA /etc/samba/private/tls-ca.crt -CAkey /etc/samba/private/tls-ca.key \
+    -CAcreateserial -out /etc/samba/private/tls.crt -days 365 -sha256
+
+# Protection des certificats TLS
+chmod 600 /etc/samba/private/tls.*
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Certificats TLS générés et protégés." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
+# Configuration avancée pour Samba (ajout d'options au smb.conf)
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Durcissement des configurations Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 cat <<EOF >>/etc/samba/smb.conf
@@ -102,56 +134,23 @@ cat <<EOF >>/etc/samba/smb.conf
     max smbd processes = 500
     allow unsafe cluster upgrade = no
     clustering = no
-    
-    [sysvol]
+
+[sysvol]
     path = /var/lib/samba/sysvol
     read only = no
 EOF
 
-# Génération de l'Autorité de Certification (CA) et des certificats TLS
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Génération de l'Autorité de Certification (CA) et des certificats TLS..." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
-mkdir -p /etc/samba/private # Création et sécurisation du dossier ou seront hébergés les certificats
-chmod 700 /etc/samba/private
-
-# 1. Créer la clé privée pour l'autorité de certification (CA)
-openssl genrsa -out /etc/samba/private/tls-ca.key 2048
-# 2. Générer le certificat de l'autorité de certification (CA)
-openssl req -x509 -new -nodes -key /etc/samba/private/tls-ca.key -sha256 -days 3650 \
-    -out /etc/samba/private/tls-ca.crt -subj "/C=FR/ST=Paris/L=Paris/O=Northstar CA/OU=IT Department/CN=Northstar Root CA"
-
-# 3. Générer une clé privée et une demande de signature de certificat (CSR) pour Samba
-openssl genrsa -out /etc/samba/private/tls.key 2048
-openssl req -new -key /etc/samba/private/tls.key -out /etc/samba/private/tls.csr -subj "/CN=NORTHSTAR.COM"
-
-# 4. Signer le certificat de Samba avec l'autorité de certification (CA)
-openssl x509 -req -in /etc/samba/private/tls.csr -CA /etc/samba/private/tls-ca.crt -CAkey /etc/samba/private/tls-ca.key \
-    -CAcreateserial -out /etc/samba/private/tls.crt -days 365 -sha256
-
-# Protection des certificats TLS
-chmod 600 /etc/samba/private/tls.*
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Certificats TLS générés et protégés." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
-
-
-# Redémarrage des services Samba
+# Redémarrage et vérification des services Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Redémarrage des services Samba..." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
-systemctl restart samba-ad-dc | tee -a /var/log/samba-setup.log
-systemctl enable samba-ad-dc | tee -a /var/log/samba-setup.log
+systemctl restart samba-ad-dc
 
-# Vérification de la configuration Samba
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Test de la configuration Samba..." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
-testparm -s > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème dans smb.conf" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+if systemctl status samba-ad-dc | grep -q "active (running)"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Samba est démarré avec succès." | tee -a /var/log/samba-setup.log
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Samba ne s'est pas démarré correctement." | tee -a /var/log/samba-setup.log
     exit 1
 fi
-echo "====================" | tee -a /var/log/samba-setup.log
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Téléchargement et installation de osquery
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Téléchargement et installation de osquery..." | tee -a /var/log/samba-setup.log
@@ -256,28 +255,53 @@ echo "====================" | tee -a /var/log/samba-setup.log
 
 
 # Configuration de Fail2Ban pour Samba
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban..." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Fail2Ban pour Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+
+# Création de la configuration spécifique pour Samba
 cat <<EOF > /etc/fail2ban/jail.d/samba.conf
 [samba]
 enabled = true
 filter = samba
-action = iptables[name=Samba, port=445, protocol=tcp]
+action = iptables-multiport[name=Samba, port="139,445", protocol=tcp]
 logpath = /var/log/samba/log.smbd
 maxretry = 3
 bantime = 600
+findtime = 600
 EOF
 
+# Vérification de l'existence du fichier de filtre pour Samba
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification du fichier de filtre pour Samba..." | tee -a /var/log/samba-setup.log
+if [ ! -f /etc/fail2ban/filter.d/samba.conf ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier de filtre manquant, création du fichier..." | tee -a /var/log/samba-setup.log
+    cat <<EOF > /etc/fail2ban/filter.d/samba.conf
+# Fail2Ban filter for Samba
+[Definition]
+failregex = .*smbd.*authentication.*failed.*
+ignoreregex =
+EOF
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier de filtre déjà présent." | tee -a /var/log/samba-setup.log
+fi
+
+# Redémarrage de Fail2Ban
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Redémarrage de Fail2Ban..." | tee -a /var/log/samba-setup.log
 systemctl restart fail2ban
+
+# Vérification du statut de Fail2Ban
 if systemctl is-active --quiet fail2ban; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Fail2Ban fonctionne !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fail2Ban n'a pas démarré !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+
+# Vérification des prisons Fail2Ban
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification des prisons Fail2Ban..." | tee -a /var/log/samba-setup.log
+fail2ban-client status samba | tee -a /var/log/samba-setup.log
+
 echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Configuration d'auditd pour surveiller Samba et Kerberos
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration d'auditd..." | tee -a /var/log/samba-setup.log
@@ -310,14 +334,14 @@ lynis audit system | tee -a /var/log/lynis-audit.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-samba-tool domain info localhost | tee -a /var/log/samba-setup.log
+# Récupération de l'adresse IP de la machine et exécution de samba-tool domain info
+samba-tool domain info $(hostname -I | awk '{print $1}') | tee -a /var/log/samba-setup.log
 
+# Vérification du résultat de la commande précédente
 if [ $? -eq 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Samba fonctionne correctement." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème détecté avec Samba !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 echo "====================" | tee -a /var/log/samba-setup.log
