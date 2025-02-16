@@ -8,7 +8,7 @@ echo "====================" | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 apt update && apt upgrade -y | tee -a /var/log/samba-setup.log
-apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables| tee -a /var/log/samba-setup.log
+apt install -y samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables | tee -a /var/log/samba-setup.log
 
 
 # Vérification de l'installation des paquets
