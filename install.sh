@@ -19,6 +19,7 @@ for pkg in samba krb5-user smbclient winbind auditd lynis audispd-plugins fail2b
         echo "====================" | tee -a /var/log/samba-setup.log
         exit 1
     fi
+    echo "====================" | tee -a /var/log/samba-setup.log
 done
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Tous les paquets ont été installés avec succès !" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
@@ -54,6 +55,7 @@ if [ -n "$ERROR_LOG" ]; then
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
@@ -142,6 +144,7 @@ if [ $? -ne 0 ]; then
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Samba valide." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
@@ -190,6 +193,7 @@ else
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Sécurisation de SSH
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification et configuration de SSH..." | tee -a /var/log/samba-setup.log
@@ -203,6 +207,7 @@ if ! dpkg -l | grep -qw openssh-server; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server installé avec succès." | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Vérification de l'existence du fichier de configuration
 if [ -f /etc/ssh/sshd_config ]; then
@@ -224,6 +229,7 @@ if [ -f /etc/ssh/sshd_config ]; then
         echo "====================" | tee -a /var/log/samba-setup.log
         exit 1
     fi
+    echo "====================" | tee -a /var/log/samba-setup.log
 
     # Redémarrage du service SSH
     systemctl restart $SERVICE_NAME
@@ -235,11 +241,13 @@ if [ -f /etc/ssh/sshd_config ]; then
         echo "====================" | tee -a /var/log/samba-setup.log
         exit 1
     fi
+    echo "====================" | tee -a /var/log/samba-setup.log
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Fichier /etc/ssh/sshd_config non trouvé !" | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 
 # Configuration de Fail2Ban pour Samba
@@ -264,6 +272,7 @@ else
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Configuration d'auditd pour surveiller Samba et Kerberos
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration d'auditd..." | tee -a /var/log/samba-setup.log
@@ -285,27 +294,37 @@ else
     echo "====================" | tee -a /var/log/samba-setup.log
     exit 1
 fi
+echo "====================" | tee -a /var/log/samba-setup.log
 
 # Exécution de Lynis pour l'audit du système
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Exécution de Lynis pour l'audit du système..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 lynis audit system | tee -a /var/log/lynis-audit.log
 
-# Vérifications finales de Samba
+# Vérification de la configuration de Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Vérification de Samba..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-samba-tool domain info | tee -a /var/log/samba-setup.log
+
+samba-tool domain info localhost | tee -a /var/log/samba-setup.log
+
+if [ $? -eq 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Samba fonctionne correctement." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Problème détecté avec Samba !" | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+    exit 1
+fi
+echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Fin de l’installation et de la configuration du domaine et du serveur
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Installation de Samba et configuration du domaine terminée ! " | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-
 # Début de la configuration des groupes et utilisateurs
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Début de la configuration des utilisateurs, groupes, politiques de mot de passe, unités d'organisation (OU) et GPO..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-
-
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Début de la configuration des utilisateurs, groupes, politiques de mot de passe, unités d'organisation (OU) et GPO..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
@@ -353,7 +372,6 @@ samba-tool user create Hugo_ADMT0 "$PASSWORD_HUGO" | tee -a /var/log/samba-setup
 samba-tool group addmembers Group_ADMT0 Hugo_ADMT0 | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur Hugo_ADMT0 créé avec mot de passe généré." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-
 
 PASSWORD_VOLTAIRE=$(openssl rand -base64 16)
 samba-tool user create Voltaire_ADMT1 "$PASSWORD_VOLTAIRE" | tee -a /var/log/samba-setup.log
@@ -421,6 +439,7 @@ for GROUP in "${GROUPS_TO_DISABLE[@]}"; do
             echo "====================" | tee -a /var/log/samba-setup.log
         done
     fi
+    echo "====================" | tee -a /var/log/samba-setup.log
 done
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Terminée avec succès !" | tee -a /var/log/samba-setup.log
