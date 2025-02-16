@@ -361,4 +361,4 @@ for GROUP in "${GROUPS_TO_DISABLE[@]}"; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Membres du groupe '$GROUP' supprimés." | tee -a /var/log/samba-setup.log
 done
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Conbfiguration Terminée"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration Terminée"
