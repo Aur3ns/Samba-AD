@@ -3,6 +3,7 @@
 LOG_FILE="/var/log/samba-gpo-setup.log"
 DOMAIN="northstar.com"
 
+
 # Fonction pour créer une GPO et récupérer son GUID et son chemin
 create_gpo() {
     local GPO_NAME="$1"
@@ -33,7 +34,7 @@ apply_gpo_to_ou() {
 # =========================================
 
 # Liste des OUs cibles
-OUs=("OU=Servers_T1,DC=northstar,DC=com" "OU=AdminWorkstations,DC=northstar,DC=com")
+OUs=("OU=NS,OU=Servers_T1,DC=northstar,DC=com" "OU=NS,OU=AdminWorkstations,DC=northstar,DC=com")
 
 # 1. Désactiver l'accès à l'invite de commandes (cmd.exe)
 GPO_NAME="Disable_CMD"
@@ -114,7 +115,7 @@ echo "🔹 Début de la configuration pour T0..." | tee -a $LOG_FILE
 
 # Création et configuration de la GPO Restrict_T0
 GPO_NAME="Restrict_T0"
-OU_PATH="OU=Group_ADMT0,DC=northstar,DC=com"
+OU_PATH="OU=NS,OU=Group_ADMT0,DC=northstar,DC=com"
 read GPO_GUID GPO_PATH <<< $(create_gpo "$GPO_NAME")
 
 echo "🔒 Restriction des accès pour Group_ADMT0..." | tee -a $LOG_FILE
@@ -142,7 +143,7 @@ echo "🔹 Début de la configuration pour T1..." | tee -a $LOG_FILE
 
 # Création et configuration de la GPO Enable_RDP_T1
 GPO_NAME="Enable_RDP_T1"
-OU_PATH="OU=Servers_T1,DC=northstar,DC=com"
+OU_PATH="OU=NS,OU=Servers_T1,DC=northstar,DC=com"
 read GPO_GUID GPO_PATH <<< $(create_gpo "$GPO_NAME")
 
 echo "🛠 Activation du Bureau à distance (RDP)..." | tee -a $LOG_FILE
@@ -156,7 +157,7 @@ apply_gpo "$GPO_NAME" "$OU_PATH" "$GPO_GUID" "$GPO_PATH"
 
 # Création et configuration de la GPO Restrict_T1
 GPO_NAME="Restrict_T1"
-OU_PATH="OU=Group_ADMT1,DC=northstar,DC=com"
+OU_PATH="OU=NS,OU=Group_ADMT1,DC=northstar,DC=com"
 read GPO_GUID GPO_PATH <<< $(create_gpo "$GPO_NAME")
 
 echo "🔒 Restriction des accès pour Group_ADMT1..." | tee -a $LOG_FILE
@@ -194,7 +195,7 @@ echo "🔹 Début de la configuration pour T2..." | tee -a $LOG_FILE
 
 # Création et configuration de la GPO Restrict_T2
 GPO_NAME="Restrict_T2"
-OU_PATH="OU=Group_ADMT2,DC=northstar,DC=com"
+OU_PATH="OU=NS,OU=Group_ADMT2,DC=northstar,DC=com"
 read GPO_GUID GPO_PATH <<< $(create_gpo "$GPO_NAME")
 
 echo "🛠 Ajout de Group_ADMT2 en tant qu'administrateur local..." | tee -a $LOG_FILE
@@ -228,4 +229,4 @@ samba-tool group addmembers "Administrators" "Group_ADMT2" | tee -a $LOG_FILE
 # =========================================
 # Fin de la configuration
 # =========================================
-echo "✅ Configuration complète des GPOs supplémentaires appliquées aux OUs 'Servers_T1' et 'AdminWorkstations' !" | tee -a $LOG_FILE
+echo " Configuration complète des GPOs !" | tee -a $LOG_FILE
