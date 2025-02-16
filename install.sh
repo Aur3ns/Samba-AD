@@ -19,7 +19,6 @@ for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins 
         echo "====================" | tee -a /var/log/samba-setup.log
         exit 1
     fi
-    echo "====================" | tee -a /var/log/samba-setup.log
 done
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Tous les paquets ont été installés avec succès !" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
