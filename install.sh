@@ -1,5 +1,6 @@
 #!/bin/bash
 
+rm /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de l'installation et de la configuration" | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
