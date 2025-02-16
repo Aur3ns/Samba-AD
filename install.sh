@@ -198,13 +198,16 @@ echo "====================" | tee -a /var/log/samba-setup.log
 # Vérification et installation de OpenSSH Server si nécessaire
 if ! dpkg -l | grep -qw openssh-server; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server n'est pas installé. Installation en cours..." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
     apt update && apt install -y openssh-server | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - OpenSSH Server installé avec succès." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 fi
 
 # Vérification de l'existence du fichier de configuration
 if [ -f /etc/ssh/sshd_config ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de /etc/ssh/sshd_config..." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
 
     sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
