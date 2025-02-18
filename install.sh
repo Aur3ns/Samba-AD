@@ -44,7 +44,7 @@ chmod 600 /etc/shadow /etc/gshadow
 chmod 644 /etc/passwd /etc/group
 
 # Sécurisation des partitions
-echo "[*] Sécurisation des partitions (/tmp, /var)..." | tee -a tee -a /var/log/samba-setup.log
+echo "[*] Sécurisation des partitions (/tmp, /var)..." | tee -a /var/log/samba-setup.log
 FSTAB_UPDATED=false
 if ! grep -q "/tmp" /etc/fstab; then
     echo "/tmp    /tmp    tmpfs   defaults,noexec,nosuid,nodev  0 0" >> /etc/fstab
