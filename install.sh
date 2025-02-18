@@ -8,10 +8,10 @@ echo "====================" | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Mise à jour et installation des paquets nécessaires..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 apt update && apt upgrade -y | tee -a /var/log/samba-setup.log
-apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd | tee -a /var/log/samba-setup.log
+apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban sudo ufw krb5-admin-server dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd | tee -a /var/log/samba-setup.log
 
 # Vérification de l'installation des paquets
-for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd; do
+for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban ufw krb5-admin-server sudo dnsutils iptables openssh-server libpam-tmpdir apt-listbugs needrestart debsums apt-show-versions rkhunter chkrootkit chrony aide logwatch libpam-winbind libnss-winbind sssd; do
     if ! dpkg -l | grep -qw "$pkg"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a /var/log/samba-setup.log
         echo "====================" | tee -a /var/log/samba-setup.log
