@@ -22,35 +22,63 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - Tous les paquets ont été installés avec 
 echo "====================" | tee -a /var/log/samba-setup.log
 
 # Configuration GRUB avec mot de passe
-echo "[*] Configuration de GRUB avec mot de passe..."
-GRUB_PASSWORD="N@rthSt@r33<:"  
-echo -e "set superusers=\"root\"\npassword_pbkdf2 root $(grub-mkpasswd-pbkdf2 <<< "$GRUB_PASSWORD" | grep -oP 'grub.pbkdf2.sha512.*')" > /etc/grub.d/40_custom
-update-grub
+echo "[*] Configuration de GRUB avec mot de passe..." | tee -a /var/log/samba-setup.log
+GRUB_PASSWORD="N@rthSt@r33<:"
+HASHED_PASSWORD=$(echo -e "$GRUB_PASSWORD\n$GRUB_PASSWORD" | grub-mkpasswd-pbkdf2 | grep -oP 'grub.pbkdf2.sha512.*')
+
+if [ -n "$HASHED_PASSWORD" ]; then
+    echo -e "set superusers=\"root\"\npassword_pbkdf2 root $HASHED_PASSWORD" > /etc/grub.d/40_custom
+    update-grub | tee -a $LOG_FILE
+    echo "[*] GRUB configuré avec succès." | tee -a /var/log/samba-setup.log
+	echo "====================" | tee -a /var/log/samba-setup.log
+else
+    echo "[!] Erreur : Impossible de générer le hash du mot de passe GRUB !" | tee -a /var/log/samba-setup.log
+	echo "====================" | tee -a /var/log/samba-setup.log
+fi
 
 # Renforcement des permissions des fichiers système sensibles
-echo "[*] Renforcement des permissions des fichiers critiques..."
+echo "[*] Renforcement des permissions des fichiers critiques..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 chown root:root /etc/passwd /etc/shadow /etc/group /etc/gshadow
 chmod 600 /etc/shadow /etc/gshadow
 chmod 644 /etc/passwd /etc/group
 
 # Sécurisation des partitions
-echo "[*] Sécurisation des partitions (/tmp, /var)..."
-cat <<EOF >> /etc/fstab
-/tmp    /tmp    tmpfs   defaults,noexec,nosuid,nodev  0 0
-/var    /var    tmpfs   defaults,noexec,nosuid,nodev  0 0
-EOF
-mount -o remount /tmp
-mount -o remount /var
+echo "[*] Sécurisation des partitions (/tmp, /var)..." | tee -a tee -a /var/log/samba-setup.log
+FSTAB_UPDATED=false
+if ! grep -q "/tmp" /etc/fstab; then
+    echo "/tmp    /tmp    tmpfs   defaults,noexec,nosuid,nodev  0 0" >> /etc/fstab
+    FSTAB_UPDATED=true
+fi
+if ! grep -q "/var" /etc/fstab; then
+    echo "/var    /var    tmpfs   defaults,noexec,nosuid,nodev  0 0" >> /etc/fstab
+    FSTAB_UPDATED=true
+fi
+
+if $FSTAB_UPDATED; then
+    systemctl daemon-reexec
+    mount -a
+    echo "[*] Partitions sécurisées et montées." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+else
+    echo "[*] Aucune modification nécessaire pour les partitions." | tee -a /var/log/samba-setup.log
+    echo "====================" | tee -a /var/log/samba-setup.log
+fi
 
 # Configuration PAM pour renforcer les mots de passe
-echo "[*] Configuration de PAM pour renforcer les mots de passe..."
+echo "[*] Configuration de PAM pour renforcer les mots de passe..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 PAM_CONFIG="/etc/security/pwquality.conf"
+sed -i '/^minlen/d' $PAM_CONFIG
+sed -i '/^minclass/d' $PAM_CONFIG
+sed -i '/^retry/d' $PAM_CONFIG
 echo "minlen = 14" >> $PAM_CONFIG
 echo "minclass = 4" >> $PAM_CONFIG
 echo "retry = 3" >> $PAM_CONFIG
 
 # Renforcement des paramètres sysctl
-echo "[*] Renforcement des paramètres sysctl..."
+echo "[*] Renforcement des paramètres sysctl..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
 SYSCTL_CONFIG="/etc/sysctl.d/99-hardening.conf"
 cat <<EOF > $SYSCTL_CONFIG
 kernel.randomize_va_space = 2
@@ -66,26 +94,92 @@ net.ipv6.conf.default.accept_redirects = 0
 net.ipv4.tcp_syncookies = 1
 net.ipv4.conf.all.rp_filter = 1
 EOF
-sysctl --system
+sysctl --system | tee -a tee -a /var/log/samba-setup.log
 
 # Désactivation des protocoles réseau inutilisés
-echo "[*] Désactivation des protocoles réseau inutilisés..."
-modprobe -r dccp sctp rds tipc
+echo "[*] Désactivation des protocoles réseau inutilisés..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+for module in dccp sctp rds tipc; do
+    if lsmod | grep -q "$module"; then
+        modprobe -r "$module"
+        echo "[*] Module $module désactivé." | tee -a /var/log/samba-setup.log
+    else
+        echo "[*] Module $module déjà désactivé." | tee -a /var/log/samba-setup.log
+    fi
+done
 
 # Installation et configuration de chrony
-echo "[*] Configuration de chrony pour la synchronisation de l’heure..."
-systemctl enable chrony
-systemctl start chrony
+echo "[*] Configuration de Chrony pour la synchronisation de l’heure..." | tee -a /var/log/samba-setup.log
+
+# Vérifier si Chrony est installé, sinon l'installer
+if ! command -v chronyc &> /dev/null; then
+    echo "[!] Chrony n'est pas installé. Installation en cours..." | tee -a /var/log/samba-setup.log
+    apt update && apt install -y chrony | tee -a /var/log/samba-setup.log
+fi
+
+# Écrire la configuration directement dans /etc/chrony/chrony.conf
+echo "[*] Mise à jour de la configuration Chrony..." | tee -a /var/log/samba-setup.log
+cat <<EOF > /etc/chrony/chrony.conf
+server ntp.obspm.fr iburst
+server ntp.laas.fr iburst
+server ntp.ciril.fr iburst
+server ntp.univ-lyon1.fr iburst
+server ntp.ens.fr iburst
+
+driftfile /var/lib/chrony/chrony.drift
+makestep 1.0 3
+maxsources 5
+rtcsync
+allow all
+
+logdir /var/log/chrony
+EOF
+
+echo "[*] Fichier de configuration Chrony mis à jour." | tee -a /var/log/samba-setup.log
+
+# Redémarrage et Activation de Chrony pour appliquer la nouvelle configuration
+echo "[*] Redémarrage de Chrony..." | tee -a /var/log/samba-setup.log
+systemctl restart chrony && systemctl enable chrony | tee -a /var/log/samba-setup.log
+
+
+# Vérifier si Chrony fonctionne bien
+if systemctl is-active --quiet chrony; then
+    echo "[*] Chrony est actif et fonctionne correctement." | tee -a /var/log/samba-setup.log
+else
+    echo "[!] Erreur : Chrony ne s'est pas lancé correctement." | tee -a /var/log/samba-setup.log
+    systemctl status chrony | tee -a /var/log/samba-setup.log
+fi
+
+# Vérifier la synchronisation NTP
+echo "[*] Vérification de la synchronisation NTP..." | tee -a /var/log/samba-setup.log
+chronyc sources -v | tee -a /var/log/samba-setup.log
+
+echo "[*] Configuration de Chrony terminée." | tee -a /var/log/samba-setup.log
 
 # Activation des rapports logwatch
-echo "[*] Configuration de logwatch..."
-logwatch --detail high --mailto root --range today
+echo "[*] Configuration de logwatch..." | tee -a tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+if [ -f /usr/sbin/logwatch ]; then
+    logwatch --detail high --mailto root --range today | tee -a /var/log/samba-setup.log
+else
+    echo "[!] Logwatch n'est pas installé. Exécution ignorée." | tee -a /var/log/samba-setup.log
+fi
 
 # Vérification des rootkits
-echo "[*] Analyse du système pour détecter des rootkits..."
-rkhunter --update
-rkhunter --checkall
-chkrootkit
+echo "[*] Analyse du système pour détecter des rootkits..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+
+# Correction pour RKHunter : s'assurer que le répertoire temporaire existe
+mkdir -p /var/lib/rkhunter/tmp
+chmod 750 /var/lib/rkhunter/tmp
+
+rkhunter --update | tee -a /var/log/samba-setup.log
+rkhunter --checkall | tee -a /var/log/samba-setup.log
+
+echo "[*] Lancement de chkrootkit..." | tee -a /var/log/samba-setup.log
+echo "====================" | tee -a /var/log/samba-setup.log
+chkrootkit | | tee -a /var/log/samba-setup.log
+
 
 # Configuration de Kerberos
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Kerberos avec des options renforcées..." | tee -a /var/log/samba-setup.log
