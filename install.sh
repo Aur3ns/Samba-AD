@@ -155,6 +155,7 @@ fi
 # Vérifier la synchronisation NTP
 echo "[*] Vérification de la synchronisation NTP..." | tee -a /var/log/samba-setup.log
 chronyc sources -v | tee -a /var/log/samba-setup.log
+chronyc tracking | tee -a /var/log/samba-setup.log
 
 echo "[*] Configuration de Chrony terminée." | tee -a /var/log/samba-setup.log
 
