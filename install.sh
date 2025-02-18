@@ -28,7 +28,7 @@ HASHED_PASSWORD=$(echo -e "$GRUB_PASSWORD\n$GRUB_PASSWORD" | grub-mkpasswd-pbkdf
 
 if [ -n "$HASHED_PASSWORD" ]; then
     echo -e "set superusers=\"root\"\npassword_pbkdf2 root $HASHED_PASSWORD" > /etc/grub.d/40_custom
-    update-grub | tee -a $LOG_FILE
+    update-grub | tee -a /var/log/samba-setup.log
     echo "[*] GRUB configuré avec succès." | tee -a /var/log/samba-setup.log
 	echo "====================" | tee -a /var/log/samba-setup.log
 else
@@ -89,12 +89,14 @@ fs.protected_symlinks = 1
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.default.accept_redirects = 0
 net.ipv4.tcp_syncookies = 1
 net.ipv4.conf.all.rp_filter = 1
 EOF
-sysctl --system | tee -a tee -a /var/log/samba-setup.log
+sysctl --system | tee -a /var/log/samba-setup.log
 
 # Désactivation des protocoles réseau inutilisés
 echo "[*] Désactivation des protocoles réseau inutilisés..." | tee -a /var/log/samba-setup.log
@@ -139,7 +141,7 @@ echo "[*] Fichier de configuration Chrony mis à jour." | tee -a /var/log/samba-
 
 # Redémarrage et Activation de Chrony pour appliquer la nouvelle configuration
 echo "[*] Redémarrage de Chrony..." | tee -a /var/log/samba-setup.log
-systemctl restart chrony && systemctl enable chrony | tee -a /var/log/samba-setup.log
+systemctl enable chrony && systemctl restart chrony | tee -a /var/log/samba-setup.log
 
 
 # Vérifier si Chrony fonctionne bien
@@ -157,7 +159,7 @@ chronyc sources -v | tee -a /var/log/samba-setup.log
 echo "[*] Configuration de Chrony terminée." | tee -a /var/log/samba-setup.log
 
 # Activation des rapports logwatch
-echo "[*] Configuration de logwatch..." | tee -a tee -a /var/log/samba-setup.log
+echo "[*] Configuration de logwatch..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 if [ -f /usr/sbin/logwatch ]; then
     logwatch --detail high --mailto root --range today | tee -a /var/log/samba-setup.log
@@ -178,7 +180,7 @@ rkhunter --checkall | tee -a /var/log/samba-setup.log
 
 echo "[*] Lancement de chkrootkit..." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
-chkrootkit | | tee -a /var/log/samba-setup.log
+chkrootkit | tee -a /var/log/samba-setup.log
 
 
 # Configuration de Kerberos
@@ -525,7 +527,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - Début de la configuration des utilisateurs
 echo "====================" | tee -a /var/log/samba-setup.log
 
 # Création des groupes selon le modèle Tiering
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des groupes selon le modèle Tiering..." | tee -a $LOG_FILE
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des groupes selon le modèle Tiering..." | tee -a /var/log/samba-setup.log
 samba-tool group add Group_ADMT0 | tee -a /var/log/samba-setup.log
 samba-tool group add Group_ADMT1 | tee -a /var/log/samba-setup.log
 samba-tool group add Group_ADMT2 | tee -a /var/log/samba-setup.log
@@ -537,11 +539,11 @@ samba-tool ou create "OU=NS,DC=northstar,DC=com" | tee -a /var/log/samba-setup.l
 echo "====================" | tee -a /var/log/samba-setup.log
 
 OU_LIST=(
-    "OU=NS,OU=Group_ADMT0,DC=northstar,DC=com"
-    "OU=NS,OU=Group_ADMT1,DC=northstar,DC=com"
-    "OU=NS,OU=Group_ADMT2,DC=northstar,DC=com"
-    "OU=NS,OU=Servers_T1,DC=northstar,DC=com"
-    "OU=NS,OU=AdminWorkstations,DC=northstar,DC=com"
+    "OU=Group_ADMT0,OU=NS,DC=northstar,DC=com"
+    "OU=Group_ADMT1,OU=NS,DC=northstar,DC=com"
+    "OU=Group_ADMT2,OU=NS,DC=northstar,DC=com"
+    "OU=Servers_T1,OU=NS,DC=northstar,DC=com"
+    "OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
 )
 
 for OU in "${OU_LIST[@]}"; do
