@@ -63,14 +63,25 @@ cat <<EOF > /etc/samba/smb.conf
     ldap timeout = 15
     allow unsafe cluster upgrade = no
     clustering = no
+    rpc server dynamic port range = 50000-55000
+    firewall-cmd --zone=public --remove-port=49152-65535/tcp --permanent
+    firewall-cmd --zone=public --add-port=50000-50500/tcp --permanent
+    full_audit:failure = none
+    full_audit:success = pwrite write rename
+    full_audit:prefix = IP=%I|USER=%u|MACHINE=%m|VOLUME=%S
+    full_audit:facility = local7
+    full_audit:priority = NOTICE
+
 
 [sysvol]
     path = /var/lib/samba/sysvol
     read only = no
+    vfs objects = full_audit
 
 [netlogon]
     path = /var/lib/samba/sysvol/$REALM/scripts
     read only = no
+    vfs objects = full_audit
 EOF
 
 # Configuration du DNS pour Samba AD
