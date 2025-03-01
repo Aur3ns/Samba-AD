@@ -17,8 +17,8 @@ apt update && apt install -y samba samba-ad-dc krb5-user winbind libnss-winbind 
 
 # 🔥 Arrêt et désactivation des anciens services Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Désactivation des services smbd, nmbd et winbind..." | tee -a "$LOG_FILE"
-systemctl stop smbd nmbd winbind samba-ad-dc
-systemctl disable smbd nmbd winbind
+systemctl stop smbd nmbd winbind samba-ad-dc avahi-daemon avahi-daemon.socket
+systemctl disable smbd nmbd winbind avahi-daemon avahi-daemon.socket
 
 # 🧹 Suppression des anciennes configurations Samba
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression des anciennes configurations Samba..." | tee -a "$LOG_FILE"
