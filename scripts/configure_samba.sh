@@ -13,10 +13,10 @@ echo "====================" | tee -a "$LOG_FILE"
 
 # 🛠 Installation de Samba AD et des dépendances
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Installation de Samba AD et des dépendances..." | tee -a "$LOG_FILE"
-apt update && apt install -y samba samba-ad-dc winbind libnss-winbind libpam-winbind dnsutils
+apt update && apt install -y samba samba-ad-dc winbind libnss-winbind libpam-winbind dnsutils openssl
 
-# 🔥 Suppression de `krb5-kdc` et `krb5-admin-server`
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression de Kerberos standalone (`krb5-kdc`) pour éviter les conflits..." | tee -a "$LOG_FILE"
+# 🔥 Suppression de `krb5-kdc` et `krb5-admin-server` pour éviter les conflits
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression de Kerberos standalone (`krb5-kdc`)..." | tee -a "$LOG_FILE"
 apt remove --purge -y krb5-kdc krb5-admin-server
 
 # 🔥 Désactivation des services conflictuels
@@ -38,8 +38,33 @@ rm -rf /etc/samba/smb.conf /var/lib/samba/*
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Provisioning du contrôleur de domaine Samba AD..." | tee -a "$LOG_FILE"
 samba-tool domain provision --use-rfc2307 --realm="$REALM" --domain="$DOMAIN" --adminpass="$SAMBA_ADMIN_PASS" --server-role=dc --dns-backend=SAMBA_INTERNAL | tee -a "$LOG_FILE"
 
-# 📜 Déploiement du fichier de configuration `smb.conf`
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Déploiement du fichier de configuration Samba (/etc/samba/smb.conf)..." | tee -a "$LOG_FILE"
+# Génération des certificats TLS
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Génération des certificats TLS pour Samba..." | tee -a "$LOG_FILE"
+mkdir -p /etc/samba/private
+chmod 700 /etc/samba/private
+
+# 1. Génération de la clé privée pour l'Autorité de Certification (CA)
+openssl genrsa -out /etc/samba/private/tls-ca.key 4096
+
+# 2. Création du certificat de l'Autorité de Certification (CA)
+openssl req -x509 -new -nodes -key /etc/samba/private/tls-ca.key -sha256 -days 3650 \
+    -out /etc/samba/private/tls-ca.crt -subj "/C=FR/ST=Paris/L=Paris/O=Northstar CA/OU=IT Department/CN=Northstar Root CA"
+
+# 3. Clé privée et CSR pour Samba
+openssl genrsa -out /etc/samba/private/tls.key 4096
+openssl req -new -key /etc/samba/private/tls.key -out /etc/samba/private/tls.csr -subj "/CN=$NETBIOS_NAME.$REALM"
+
+# 4. Signature du certificat de Samba avec l'Autorité de Certification
+openssl x509 -req -in /etc/samba/private/tls.csr -CA /etc/samba/private/tls-ca.crt -CAkey /etc/samba/private/tls-ca.key \
+    -CAcreateserial -out /etc/samba/private/tls.crt -days 365 -sha256
+
+# Protection des certificats TLS
+chmod 600 /etc/samba/private/tls.*
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Certificats TLS générés et protégés." | tee -a "$LOG_FILE"
+
+# Déploiement du fichier de configuration `smb.conf`
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Déploiement du fichier de configuration Samba..." | tee -a "$LOG_FILE"
 cat <<EOF > /etc/samba/smb.conf
 [global]
     netbios name = $NETBIOS_NAME
@@ -64,24 +89,18 @@ cat <<EOF > /etc/samba/smb.conf
     allow unsafe cluster upgrade = no
     clustering = no
     rpc server dynamic port range = 50000-55000
-    firewall-cmd --zone=public --remove-port=49152-65535/tcp --permanent
-    firewall-cmd --zone=public --add-port=50000-50500/tcp --permanent
-    full_audit:failure = none
-    full_audit:success = pwrite write rename
-    full_audit:prefix = IP=%I|USER=%u|MACHINE=%m|VOLUME=%S
-    full_audit:facility = local7
-    full_audit:priority = NOTICE
-
+    tls enabled = yes
+    tls keyfile = /etc/samba/private/tls.key
+    tls certfile = /etc/samba/private/tls.crt
+    tls cafile = /etc/samba/private/tls-ca.crt
 
 [sysvol]
     path = /var/lib/samba/sysvol
     read only = no
-    vfs objects = full_audit
 
 [netlogon]
     path = /var/lib/samba/sysvol/$REALM/scripts
     read only = no
-    vfs objects = full_audit
 EOF
 
 # Configuration du DNS pour Samba AD
