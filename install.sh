@@ -24,10 +24,9 @@ echo "====================" | tee -a /var/log/samba-setup.log
 ####################################################################################################################################################
 ####################################################################################################################################################
 
-
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Début de la configuration de Kerberos..." | tee -a /var/log/samba-setup.log
 
-trap 'echo " Erreur à la ligne $LINENO ! Vérifier $LOG_FILE"; exit 1' ERR
+trap 'echo "Erreur à la ligne $LINENO ! Vérifier /var/log/samba-setup.log"; exit 1' ERR
 
 echo "====================" | tee -a /var/log/samba-setup.log
 
@@ -62,14 +61,21 @@ EOF
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier /etc/krb5.conf créé." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
 
-
-# Vérification de la base de données Kerberos
+# Vérification et initialisation de la base de données Kerberos
 if [ ! -f "/var/lib/krb5kdc/principal" ]; then
     echo "====================" | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Initialisation de la base de données Kerberos..." | tee -a /var/log/samba-setup.log
 
-    echo -e "$(openssl rand -base64 16)\n$(openssl rand -base64 16)" | kdb5_util create -s
-    
+    # Générer un seul mot de passe maître pour éviter l'erreur de non-correspondance
+    KDC_MASTER_PASS=$(openssl rand -base64 16)
+
+    # Initialisation de la base de données avec le même mot de passe en entrée et confirmation
+    echo -e "$KDC_MASTER_PASS\n$KDC_MASTER_PASS" | kdb5_util create -s
+
+    # Sauvegarde sécurisée du mot de passe maître
+    echo "$KDC_MASTER_PASS" > /root/kdc_master_key.txt
+    chmod 600 /root/kdc_master_key.txt
+
     echo "====================" | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Base de données Kerberos créée avec succès." | tee -a /var/log/samba-setup.log
 else
@@ -88,15 +94,14 @@ else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Le fichier ACL existe déjà." | tee -a /var/log/samba-setup.log
 fi
 
-# Création de l'utilisateur root
+# Création de l'utilisateur root dans Kerberos
 echo "====================" | tee -a /var/log/samba-setup.log
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'utilisateur root..." | tee -a /var/log/samba-setup.log
 
-# Génération du mot de passe aléatoire pour root
+# Génération d'un mot de passe aléatoire pour root
 ROOT_KERB_PASS=$(openssl rand -base64 16)
 
-# Affichage du mot de passe dans les logs et sauvegarde sécurisée
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe Kerberos root: $ROOT_KERB_PASS" | tee -a /var/log/samba-setup.log
+# Sauvegarde sécurisée du mot de passe
 echo "$ROOT_KERB_PASS" > /root/kerberos_root_pass.txt
 chmod 600 /root/kerberos_root_pass.txt
 
@@ -126,9 +131,9 @@ else
     exit 1
 fi
 
-# Test de connexion avec kinit
+# Test de connexion avec kinit pour root
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Test d'authentification avec root..." | tee -a /var/log/samba-setup.log
-echo "$(openssl rand -base64 16)" | kinit root
+echo "$ROOT_KERB_PASS" | kinit root
 
 # Vérification si kinit a fonctionné
 if klist -s; then
