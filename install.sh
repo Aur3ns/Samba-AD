@@ -24,10 +24,15 @@ echo "====================" | tee -a /var/log/samba-setup.log
 ####################################################################################################################################################
 ####################################################################################################################################################
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Kerberos avec des options renforcées..." | tee -a /var/log/samba-setup.log
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Début de la configuration de Kerberos..." | tee -a /var/log/samba-setup.log
+
+trap 'echo " Erreur à la ligne $LINENO ! Vérifier $LOG_FILE"; exit 1' ERR
+
 echo "====================" | tee -a /var/log/samba-setup.log
 
 # Création du fichier de configuration de Kerberos
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Création du fichier /etc/krb5.conf..." | tee -a /var/log/samba-setup.log
 cat <<EOF > /etc/krb5.conf
 [libdefaults]
     default_realm = NORTHSTAR.COM
@@ -54,84 +59,87 @@ cat <<EOF > /etc/krb5.conf
     northstar.com = NORTHSTAR.COM
 EOF
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier de configuration /etc/krb5.conf créé avec succès." | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Fichier /etc/krb5.conf créé." | tee -a /var/log/samba-setup.log
 echo "====================" | tee -a /var/log/samba-setup.log
+
 
 # Vérification de la base de données Kerberos
 if [ ! -f "/var/lib/krb5kdc/principal" ]; then
+    echo "====================" | tee -a /var/log/samba-setup.log
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Initialisation de la base de données Kerberos..." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+
+    echo -e "$(openssl rand -base64 16)\n$(openssl rand -base64 16)" | kdb5_util create -s
     
-    # Génération d'un mot de passe sécurisé pour l'admin
-    KERB_ADMIN_PASS=$(openssl rand -base64 16)
-    echo "Mot de passe Kerberos admin: $KERB_ADMIN_PASS" > /root/kerberos_admin_pass.txt
-    chmod 600 /root/kerberos_admin_pass.txt
-
-    # Création de la base de données
-    echo -e "$KERB_ADMIN_PASS\n$KERB_ADMIN_PASS" | kdb5_util create -s
     echo "====================" | tee -a /var/log/samba-setup.log
-
-    if [ $? -eq 0 ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Base de données Kerberos créée avec succès." | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
-    else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur lors de la création de la base de données Kerberos !" | tee -a /var/log/samba-setup.log
-        echo "====================" | tee -a /var/log/samba-setup.log
-        exit 1
-    fi
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Base de données Kerberos créée avec succès." | tee -a /var/log/samba-setup.log
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - La base de données Kerberos existe déjà, pas besoin de recréer." | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - La base de données Kerberos existe déjà." | tee -a /var/log/samba-setup.log
 fi
 
-# Ajout de l'administrateur admin/admin
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'utilisateur admin/admin..." | tee -a /var/log/samba-setup.log
-echo -e "$KERB_ADMIN_PASS\n$KERB_ADMIN_PASS" | kadmin.local -q "addprinc admin/admin"
-echo "====================" | tee -a /var/log/samba-setup.log
-
-if [ $? -eq 0 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur admin/admin créé avec succès." | tee -a /var/log/samba-setup.log
+# Vérification et création du fichier ACL
+if [ ! -f "/etc/krb5kdc/kadm5.acl" ]; then
     echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Création du fichier /etc/krb5kdc/kadm5.acl..." | tee -a /var/log/samba-setup.log
+    echo "*/root@NORTHSTAR.COM *" > /etc/krb5kdc/kadm5.acl
+    chmod 600 /etc/krb5kdc/kadm5.acl
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur lors de la création de l'utilisateur admin/admin !" | tee -a /var/log/samba-setup.log
     echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Le fichier ACL existe déjà." | tee -a /var/log/samba-setup.log
+fi
+
+# Création de l'utilisateur root
+echo "====================" | tee -a /var/log/samba-setup.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'utilisateur root..." | tee -a /var/log/samba-setup.log
+
+# Génération du mot de passe aléatoire pour root
+ROOT_KERB_PASS=$(openssl rand -base64 16)
+
+# Affichage du mot de passe dans les logs et sauvegarde sécurisée
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe Kerberos root: $ROOT_KERB_PASS" | tee -a /var/log/samba-setup.log
+echo "$ROOT_KERB_PASS" > /root/kerberos_root_pass.txt
+chmod 600 /root/kerberos_root_pass.txt
+
+# Création du principal root dans Kerberos
+echo -e "$ROOT_KERB_PASS\n$ROOT_KERB_PASS" | kadmin.local -q "addprinc root"
+
+# Vérification de la création de l'utilisateur root
+if kadmin.local -q "getprinc root" | grep -q "Principal: root@"; then
+    echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur root Kerberos créé avec succès." | tee -a /var/log/samba-setup.log
+else
+    echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : La création de root a échoué !" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Redémarrage des services Kerberos
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Redémarrage des services Kerberos..." | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
 systemctl restart krb5-kdc krb5-admin-server
 systemctl enable krb5-kdc krb5-admin-server
 
 # Vérification des services
 if systemctl is-active --quiet krb5-kdc && systemctl is-active --quiet krb5-admin-server; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Kerberos fonctionne correctement !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Un des services Kerberos ne fonctionne pas !" | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') -  Erreur : Un des services Kerberos ne fonctionne pas !" | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 # Test de connexion avec kinit
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Test d'authentification avec admin/admin..." | tee -a "$LOG_FILE"
-echo "====================" | tee -a /var/log/samba-setup.log
-echo "$KERB_ADMIN_PASS" | kinit admin/admin
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Test d'authentification avec root..." | tee -a /var/log/samba-setup.log
+echo "$(openssl rand -base64 16)" | kinit root
 
 # Vérification si kinit a fonctionné
 if klist -s; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Test réussi ! Ticket Kerberos actif pour admin/admin." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
-    klist | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Test réussi ! Ticket Kerberos actif pour root." | tee -a /var/log/samba-setup.log
 else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ⚠ Erreur : Échec de l'authentification Kerberos pour admin/admin." | tee -a /var/log/samba-setup.log
-    echo "====================" | tee -a /var/log/samba-setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Échec de l'authentification Kerberos pour root." | tee -a /var/log/samba-setup.log
     exit 1
 fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Configuration de Kerberos terminée !" | tee -a /var/log/samba-setup.log
-echo "====================" | tee -a /var/log/samba-setup.log
+
 
 ####################################################################################################################################################
 ####################################################################################################################################################
