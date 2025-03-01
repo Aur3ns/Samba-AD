@@ -2,6 +2,7 @@
 
 LOG_FILE="/var/log/samba-setup.log"
 SSH_CONFIG="/etc/ssh/sshd_config"
+FAIL2BAN_DIR="/etc/fail2ban"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 🚀 Démarrage de la configuration de SSH, Samba et Fail2Ban..." | tee -a "$LOG_FILE"
 trap 'echo "❌ Erreur à la ligne $LINENO ! Vérifier $LOG_FILE"; exit 1' ERR
@@ -38,10 +39,14 @@ echo "====================" | tee -a "$LOG_FILE"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 🔍 Vérification et installation de Fail2Ban..." | tee -a "$LOG_FILE"
 apt update && apt install -y fail2ban
 
-# 🔥 Création de la configuration Fail2Ban pour SSH et Samba
-echo "$(date '+%Y-%m-%d %H:%M:%S') - ⚙️ Configuration de Fail2Ban pour SSH et Samba..." | tee -a "$LOG_FILE"
+# 🔥 Suppression des configurations précédentes de Fail2Ban sans toucher au smb.conf
+echo "$(date '+%Y-%m-%d %H:%M:%S') - 🧹 Suppression des configurations Fail2Ban existantes..." | tee -a "$LOG_FILE"
+rm -f $FAIL2BAN_DIR/jail.d/*.conf
+rm -f $FAIL2BAN_DIR/filter.d/*.conf
 
 # 📜 Configuration Fail2Ban pour SSH
+echo "$(date '+%Y-%m-%d %H:%M:%S') - ⚙️ Configuration de Fail2Ban pour SSH et Samba..." | tee -a "$LOG_FILE"
+
 cat <<EOF > /etc/fail2ban/jail.d/sshd.conf
 [sshd]
 enabled = true
@@ -89,19 +94,5 @@ fail2ban-client status sshd | tee -a "$LOG_FILE"
 fail2ban-client status samba | tee -a "$LOG_FILE"
 
 echo "====================" | tee -a "$LOG_FILE"
-
-# ========================
-# 🔄 Vérification de la détection Samba
-# ========================
-echo "$(date '+%Y-%m-%d %H:%M:%S') - 🔍 Vérification des logs Samba pour NT_STATUS_LOGON_FAILURE..." | tee -a "$LOG_FILE"
-if ! grep -q "NT_STATUS_LOGON_FAILURE" /var/log/samba/log.smbd; then
-    echo "⚠️ Aucun log NT_STATUS_LOGON_FAILURE trouvé. Vérification de la configuration Samba..." | tee -a "$LOG_FILE"
-    
-    testparm -s | tee -a "$LOG_FILE"
-    
-    echo "⚠️ Augmentation du niveau de logs Samba à 3..." | tee -a "$LOG_FILE"
-    sed -i 's/^.*log level =.*$/log level = 3 auth:10/' /etc/samba/smb.conf
-    systemctl restart smbd
-fi
 
 echo "✅ Sécurisation SSH et configuration de Fail2Ban terminées." | tee -a "$LOG_FILE"
