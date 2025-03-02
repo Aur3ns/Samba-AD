@@ -106,7 +106,6 @@ def create_full_gpo(gpo_name):
     except subprocess.CalledProcessError as e:
         return f"[ERROR] La création du GPO a échoué : {e.stderr}"
 
-
 def delete_gpo(samdb, domain_dn, gpo_name):
     """Supprime un GPO."""
     try:
@@ -147,6 +146,54 @@ def delete_user(samdb, domain_dn, user_name):
         return f"[OK] Utilisateur '{user_name}' supprimé."
     except Exception as e:
         return f"[ERROR] Impossible de supprimer l'utilisateur : {e}"
+
+# --- Gestion des ordinateurs ---
+def list_computers(samdb, domain_dn):
+    """Liste les ordinateurs du domaine."""
+    try:
+        # Recherche dans l'ensemble du domaine ; les ordinateurs peuvent se trouver dans différents conteneurs
+        computers = samdb.search(base=domain_dn, expression="(objectClass=computer)", attrs=["cn"])
+        return [comp["cn"][0].decode('utf-8') if isinstance(comp["cn"][0], bytes) else comp["cn"][0] for comp in computers] if computers else []
+    except Exception as e:
+        return f"[ERROR] {e}"
+
+def create_computer(samdb, domain_dn, computer_name):
+    """Crée un nouvel ordinateur dans le conteneur CN=Computers par défaut."""
+    try:
+        computer_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
+        # Le sAMAccountName d'un ordinateur se termine généralement par '$'
+        attrs = {
+            "dn": computer_dn,
+            "objectClass": ["top", "computer"],
+            "sAMAccountName": f"{computer_name}$"
+        }
+        samdb.add(attrs)
+        return f"[OK] Ordinateur '{computer_name}' créé."
+    except Exception as e:
+        return f"[ERROR] Impossible de créer l'ordinateur : {e}"
+
+def delete_computer(samdb, domain_dn, computer_name):
+    """Supprime un ordinateur depuis le conteneur CN=Computers par défaut."""
+    try:
+        computer_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
+        samdb.delete(computer_dn)
+        return f"[OK] Ordinateur '{computer_name}' supprimé."
+    except Exception as e:
+        return f"[ERROR] Impossible de supprimer l'ordinateur : {e}"
+
+def move_computer(samdb, domain_dn, computer_name, target_ou):
+    """
+    Déplace un ordinateur du conteneur par défaut (CN=Computers) vers une OU cible.
+    Note : cette opération modifie le DN de l'objet ordinateur.
+    """
+    try:
+        old_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
+        new_dn = f"CN={computer_name},OU={target_ou},{domain_dn}"
+        # On utilise ici une méthode de renommage (déplacement) de l'objet.
+        samdb.rename(old_dn, new_dn)
+        return f"[OK] Ordinateur '{computer_name}' déplacé vers l'OU '{target_ou}'."
+    except Exception as e:
+        return f"[ERROR] Impossible de déplacer l'ordinateur : {e}"
 
 # --- Construction de l'arbre des OUs ---
 def build_ou_tree(samdb, domain_dn):
@@ -202,28 +249,6 @@ def ou_tree_navigation_menu(stdscr, domain_info):
     stdscr.addstr(20, 0, "[Appuyez sur une touche pour revenir au menu...]")
     stdscr.refresh()
     stdscr.getch()
-
-# --- Interface Curses ---
-def display_menu(stdscr, title, options):
-    """Affiche un menu et retourne l'option sélectionnée."""
-    current_row = 0
-    while True:
-        stdscr.clear()
-        stdscr.addstr(0, 0, f"[ {title} ]", curses.A_BOLD)
-        stdscr.addstr(1, 0, "=" * 50)
-        for idx, option in enumerate(options):
-            if idx == current_row:
-                stdscr.addstr(idx + 3, 0, f"> {option}", curses.A_REVERSE)
-            else:
-                stdscr.addstr(idx + 3, 0, f"- {option}")
-        stdscr.refresh()
-        key = stdscr.getch()
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
-            current_row += 1
-        elif key in [10, 13]:  # Entrée
-            return current_row
 
 # --- Interface Curses ---
 def display_menu(stdscr, title, options):
@@ -376,7 +401,6 @@ def gpo_menu(stdscr, domain_info):
             break
         display_message(stdscr, safe_display(result))
 
-
 def user_menu(stdscr, domain_info):
     """Menu pour gérer les utilisateurs."""
     options = ["Lister les utilisateurs", "Créer un utilisateur", "Supprimer un utilisateur", "Retour"]
@@ -408,6 +432,44 @@ def user_menu(stdscr, domain_info):
         stdscr.refresh()
         stdscr.getch()
 
+def computer_menu(stdscr, domain_info):
+    """Menu pour gérer les ordinateurs."""
+    options = ["Lister les ordinateurs", "Créer un ordinateur", "Supprimer un ordinateur", "Déplacer un ordinateur", "Retour"]
+    while True:
+        choice = display_menu(stdscr, "Gestion des ordinateurs", options)
+        if choice == 0:
+            result = list_computers(domain_info["samdb"], domain_info["domain_dn"])
+        elif choice == 1:
+            stdscr.clear()
+            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à créer: ")
+            curses.echo()
+            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
+            curses.noecho()
+            result = create_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name)
+        elif choice == 2:
+            stdscr.clear()
+            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à supprimer: ")
+            curses.echo()
+            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
+            curses.noecho()
+            result = delete_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name)
+        elif choice == 3:
+            stdscr.clear()
+            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à déplacer: ")
+            curses.echo()
+            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
+            stdscr.addstr(3, 0, "Entrez le nom de l'OU cible: ")
+            target_ou = stdscr.getstr(3, 35, 20).decode('utf-8')
+            curses.noecho()
+            result = move_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name, target_ou)
+        elif choice == 4:
+            break
+        stdscr.clear()
+        stdscr.addstr(2, 0, safe_display(result))
+        stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
+        stdscr.refresh()
+        stdscr.getch()
+
 # --- Menu principal ---
 def main_menu(stdscr, domain_info):
     """Affiche le menu principal et dirige vers les sous-menus."""
@@ -416,6 +478,7 @@ def main_menu(stdscr, domain_info):
         "Gestion des GPOs",
         "Gestion des groupes",
         "Gestion des utilisateurs",
+        "Gestion des ordinateurs",
         "Quitter"
     ]
     while True:
@@ -429,6 +492,8 @@ def main_menu(stdscr, domain_info):
         elif choice == 3:
             user_menu(stdscr, domain_info)
         elif choice == 4:
+            computer_menu(stdscr, domain_info)
+        elif choice == 5:
             break
 
 # --- Lancer l'application ---
