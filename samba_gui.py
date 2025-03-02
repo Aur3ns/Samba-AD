@@ -3,50 +3,59 @@ import os
 from samba.samdb import SamDB
 from samba import credentials
 from samba.param import LoadParm
+import getpass  # 📌 Ajout pour la saisie du mot de passe
 
 
 def detect_domain_settings():
-    """Détection automatique des paramètres de domaine."""
+    """Détection automatique des paramètres de domaine avec authentification."""
     lp = LoadParm()
     creds = credentials.Credentials()
-    
+
+    # 🔑 Demande les identifiants de l'Administrateur
+    admin_user = "Administrator"  # 📌 Modifie si besoin
+    admin_password = getpass.wrapper("🛡️ Entrez le mot de passe Samba AD : ")
+
     try:
-        samdb = SamDB(url="ldap://localhost", session_info=creds.get_session_info(), lp=lp)
+        creds.set_username(admin_user)
+        creds.set_password(admin_password)
+        creds.guess(lp)
+
+        # 🔗 Connexion sécurisée à la base LDAP de Samba
+        samdb = SamDB(url="ldap://localhost", credentials=creds, lp=lp)
+
+        # 🔍 Détection du domaine
         domain_dn = samdb.search(base="", scope=0, attrs=["defaultNamingContext"])[0]["defaultNamingContext"][0]
-        return {
-            "samdb": samdb,
-            "domain_dn": domain_dn,
-            "domain_name": samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])[0]["dc"][0]
-        }
+        domain_name = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])[0]["dc"][0]
+
+        return {"samdb": samdb, "domain_dn": domain_dn, "domain_name": domain_name}
+
     except Exception as e:
-        return f"Erreur lors de la détection du domaine : {e}"
+        return f"❌ Erreur lors de la détection du domaine : {e}"
 
 
-def list_ous(samdb):
+def list_ous(samdb, domain_dn):
     """Liste les Unités Organisationnelles (OUs) du domaine."""
-    ous = samdb.search(base="DC=example,DC=com", expression="(objectClass=organizationalUnit)", attrs=["ou"])
-    return [ou["ou"][0] for ou in ous]
+    ous = samdb.search(base=domain_dn, expression="(objectClass=organizationalUnit)", attrs=["ou"])
+    return [ou["ou"][0] for ou in ous] if ous else []
 
 
 def export_list_to_file(filename, data):
-    """Export la liste dans un fichier texte."""
-    with open(filename, "w") as file:
-        file.write("\n".join(data))
-    return f"Liste exportée avec succès dans le fichier {filename}."
+    """Exporte une liste dans un fichier texte."""
+    try:
+        with open(filename, "w") as file:
+            file.write("\n".join(data))
+        return f"✅ Liste exportée avec succès dans {filename}."
+    except Exception as e:
+        return f"❌ Erreur lors de l'exportation : {e}"
 
 
 def list_acls(samdb, object_dn):
     """Liste les permissions ACL sur un objet donné."""
     try:
         acls = samdb.search(base=object_dn, attrs=["ntSecurityDescriptor"])
-        if not acls:
-            return "Aucune ACL trouvée."
-        
-        # Affichage des ACLs brutes pour le moment (simplifiable)
-        acl_info = acls[0]["ntSecurityDescriptor"][0]
-        return f"ACLs sur {object_dn} :\n{acl_info}"
+        return f"ACLs sur {object_dn} :\n{acls[0]['ntSecurityDescriptor'][0]}" if acls else "Aucune ACL trouvée."
     except Exception as e:
-        return f"Erreur lors de la récupération des ACLs : {e}"
+        return f"❌ Erreur lors de la récupération des ACLs : {e}"
 
 
 def input_dialog(stdscr, prompt):
@@ -76,19 +85,20 @@ def main(stdscr):
         return
 
     samdb = domain_info["samdb"]
+    domain_dn = domain_info["domain_dn"]
 
     menu = [
-        "Lister les OUs", 
-        "Exporter la liste des OUs", 
-        "Lister les ACLs d'une OU", 
-        "Exporter la liste des GPOs", 
+        "Lister les OUs",
+        "Exporter la liste des OUs",
+        "Lister les ACLs d'une OU",
+        "Exporter la liste des GPOs",
         "Quitter"
     ]
     current_row = 0
 
     while True:
         stdscr.clear()
-        stdscr.addstr(0, 0, f"Interface Samba AD - Domaine : {domain_info['domain_name']} (Mode CLI Rétro)", curses.A_BOLD | curses.color_pair(1))
+        stdscr.addstr(0, 0, f"📂 Interface Samba AD - Domaine : {domain_info['domain_name']}", curses.A_BOLD | curses.color_pair(1))
         stdscr.addstr(1, 0, "=" * 60, curses.color_pair(1))
         
         for idx, row in enumerate(menu):
@@ -109,8 +119,8 @@ def main(stdscr):
                 break
             elif current_row == 0:  # Lister les OUs
                 stdscr.clear()
-                stdscr.addstr(0, 0, "Liste des Unités Organisationnelles (OUs) :", curses.A_BOLD)
-                ous = list_ous(samdb)
+                stdscr.addstr(0, 0, "📜 Liste des Unités Organisationnelles (OUs) :", curses.A_BOLD)
+                ous = list_ous(samdb, domain_dn)
                 for idx, ou in enumerate(ous):
                     stdscr.addstr(idx + 2, 0, f"- {ou}")
                 stdscr.addstr(len(ous) + 3, 0, "Appuyez sur une touche pour revenir au menu.")
@@ -118,7 +128,7 @@ def main(stdscr):
                 stdscr.getch()
             elif current_row == 1:  # Exporter la liste des OUs
                 stdscr.clear()
-                ous = list_ous(samdb)
+                ous = list_ous(samdb, domain_dn)
                 result = export_list_to_file("rapport_OUs.txt", ous)
                 stdscr.addstr(3, 0, result)
                 stdscr.addstr(5, 0, "Appuyez sur une touche pour revenir au menu.")
@@ -127,7 +137,7 @@ def main(stdscr):
             elif current_row == 2:  # Lister les ACLs d'une OU
                 stdscr.clear()
                 ou_name = input_dialog(stdscr, "Nom de l'OU : ")
-                ous = samdb.search(base="DC=example,DC=com", expression=f"(ou={ou_name})", attrs=["dn"])
+                ous = samdb.search(base=domain_dn, expression=f"(ou={ou_name})", attrs=["dn"])
                 if not ous:
                     result = f"OU '{ou_name}' introuvable."
                 else:
@@ -138,8 +148,8 @@ def main(stdscr):
                 stdscr.getch()
             elif current_row == 3:  # Exporter la liste des GPOs
                 stdscr.clear()
-                gpos = samdb.search(base="CN=Policies,CN=System,DC=example,DC=com", expression="(objectClass=groupPolicyContainer)", attrs=["displayName"])
-                gpo_list = [gpo["displayName"][0] for gpo in gpos]
+                gpos = samdb.search(base=f"CN=Policies,CN=System,{domain_dn}", expression="(objectClass=groupPolicyContainer)", attrs=["displayName"])
+                gpo_list = [gpo["displayName"][0] for gpo in gpos] if gpos else []
                 result = export_list_to_file("rapport_GPOs.txt", gpo_list)
                 stdscr.addstr(3, 0, result)
                 stdscr.addstr(5, 0, "Appuyez sur une touche pour revenir au menu.")
