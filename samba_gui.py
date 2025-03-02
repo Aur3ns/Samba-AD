@@ -6,7 +6,7 @@ from samba.samdb import SamDB
 from samba import credentials
 from samba.param import LoadParm
 
-# --- CONNEXION AU DOMAINE Samba AD ---
+# --- Connexion au domaine Samba AD ---
 def detect_domain_settings(admin_user, admin_password):
     """Connexion au domaine Samba AD avec authentification."""
     lp = LoadParm()
@@ -18,25 +18,23 @@ def detect_domain_settings(admin_user, admin_password):
         samdb = SamDB(url="ldap://localhost", credentials=creds, lp=lp)
         domain_dn = samdb.search(base="", scope=0, attrs=["defaultNamingContext"])[0]["defaultNamingContext"][0]
         domain_name = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])[0]["dc"][0]
-        return {"samdb": samdb, "domain_dn": domain_dn, "domain_name": domain_name}
+        return {"samdb": samdb, "domain_dn": domain_dn, "domain_name": domain_name, "user": admin_user}
     except Exception as e:
         return f"[ERROR] Connexion échouée : {e}"
 
-# --- Fonction d'affichage sécurisée pour les listes ---
+# --- Fonctions d'affichage des résultats ---
 def safe_display(result):
     if isinstance(result, list):
         return "\n".join(x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in result)
     else:
         return result
 
-# --- Gestion des OUs ---
+# --- Fonctions de gestion (OUs, Groupes, GPOs, Utilisateurs, Ordinateurs) ---
 def list_ous(samdb, domain_dn):
-    """Liste les Unités Organisationnelles (OUs) du domaine."""
     ous = samdb.search(base=domain_dn, expression="(objectClass=organizationalUnit)", attrs=["ou", "dn"])
     return [ou["ou"][0].decode('utf-8') if isinstance(ou["ou"][0], bytes) else ou["ou"][0] for ou in ous] if ous else []
 
 def create_ou(samdb, domain_dn, ou_name):
-    """Crée une nouvelle OU."""
     try:
         ou_dn = f"OU={ou_name},{domain_dn}"
         samdb.add({"dn": ou_dn, "objectClass": ["top", "organizationalUnit"]})
@@ -45,7 +43,6 @@ def create_ou(samdb, domain_dn, ou_name):
         return f"[ERROR] Impossible de créer l'OU : {e}"
 
 def delete_ou(samdb, domain_dn, ou_name):
-    """Supprime une OU."""
     try:
         ou_dn = f"OU={ou_name},{domain_dn}"
         samdb.delete(ou_dn)
@@ -53,9 +50,7 @@ def delete_ou(samdb, domain_dn, ou_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer l'OU : {e}"
 
-# --- Gestion des groupes ---
 def list_groups(samdb, domain_dn):
-    """Liste les groupes présents dans CN=Users."""
     try:
         base = f"CN=Users,{domain_dn}"
         groups = samdb.search(base=base, expression="(objectClass=group)", attrs=["cn"])
@@ -64,7 +59,6 @@ def list_groups(samdb, domain_dn):
         return f"[ERROR] {e}"
 
 def create_group(samdb, domain_dn, group_name):
-    """Crée un groupe."""
     try:
         group_dn = f"CN={group_name},CN=Users,{domain_dn}"
         samdb.add({"dn": group_dn, "objectClass": ["top", "group"], "sAMAccountName": group_name})
@@ -73,7 +67,6 @@ def create_group(samdb, domain_dn, group_name):
         return f"[ERROR] Impossible de créer le groupe : {e}"
 
 def delete_group(samdb, domain_dn, group_name):
-    """Supprime un groupe."""
     try:
         group_dn = f"CN={group_name},CN=Users,{domain_dn}"
         samdb.delete(group_dn)
@@ -81,19 +74,12 @@ def delete_group(samdb, domain_dn, group_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer le groupe : {e}"
 
-# --- Gestion des GPOs ---
 def list_gpos(samdb, domain_dn):
-    """Liste les GPOs du domaine."""
     gpo_base = f"CN=Policies,CN=System,{domain_dn}"
     gpos = samdb.search(base=gpo_base, expression="(objectClass=groupPolicyContainer)", attrs=["displayName"])
     return [gpo["displayName"][0].decode('utf-8') if isinstance(gpo["displayName"][0], bytes) else gpo["displayName"][0] for gpo in gpos] if gpos else []
 
 def create_full_gpo(gpo_name):
-    """
-    Crée un GPO complet dans Samba AD en appelant:
-       samba-tool gpo create <NomGPO>
-    Cette commande crée l'objet GPO dans l'annuaire et met en place la structure SYSVOL associée.
-    """
     try:
         result = subprocess.run(
             ["samba-tool", "gpo", "create", gpo_name],
@@ -107,7 +93,6 @@ def create_full_gpo(gpo_name):
         return f"[ERROR] La création du GPO a échoué : {e.stderr}"
 
 def delete_gpo(samdb, domain_dn, gpo_name):
-    """Supprime un GPO."""
     try:
         gpo_base = f"CN=Policies,CN=System,{domain_dn}"
         gpo_dn = f"CN={gpo_name},{gpo_base}"
@@ -116,15 +101,12 @@ def delete_gpo(samdb, domain_dn, gpo_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer le GPO : {e}"
 
-# --- Gestion des utilisateurs ---
 def list_users(samdb, domain_dn):
-    """Liste les utilisateurs du domaine."""
     users = samdb.search(base=domain_dn, expression="(objectClass=user)", attrs=["sAMAccountName"])
     return [user["sAMAccountName"][0].decode('utf-8') if isinstance(user["sAMAccountName"][0], bytes) else user["sAMAccountName"][0] 
             for user in users if user["sAMAccountName"][0].lower() != b"krbtgt"] if users else []
 
 def create_user(samdb, domain_dn, user_name, password):
-    """Crée un nouvel utilisateur."""
     try:
         user_dn = f"CN={user_name},CN=Users,{domain_dn}"
         user_attrs = {
@@ -139,7 +121,6 @@ def create_user(samdb, domain_dn, user_name, password):
         return f"[ERROR] Impossible de créer l'utilisateur : {e}"
 
 def delete_user(samdb, domain_dn, user_name):
-    """Supprime un utilisateur."""
     try:
         user_dn = f"CN={user_name},CN=Users,{domain_dn}"
         samdb.delete(user_dn)
@@ -147,21 +128,16 @@ def delete_user(samdb, domain_dn, user_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer l'utilisateur : {e}"
 
-# --- Gestion des ordinateurs ---
 def list_computers(samdb, domain_dn):
-    """Liste les ordinateurs du domaine."""
     try:
-        # Recherche dans l'ensemble du domaine ; les ordinateurs peuvent se trouver dans différents conteneurs
         computers = samdb.search(base=domain_dn, expression="(objectClass=computer)", attrs=["cn"])
         return [comp["cn"][0].decode('utf-8') if isinstance(comp["cn"][0], bytes) else comp["cn"][0] for comp in computers] if computers else []
     except Exception as e:
         return f"[ERROR] {e}"
 
 def create_computer(samdb, domain_dn, computer_name):
-    """Crée un nouvel ordinateur dans le conteneur CN=Computers par défaut."""
     try:
         computer_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
-        # Le sAMAccountName d'un ordinateur se termine généralement par '$'
         attrs = {
             "dn": computer_dn,
             "objectClass": ["top", "computer"],
@@ -173,7 +149,6 @@ def create_computer(samdb, domain_dn, computer_name):
         return f"[ERROR] Impossible de créer l'ordinateur : {e}"
 
 def delete_computer(samdb, domain_dn, computer_name):
-    """Supprime un ordinateur depuis le conteneur CN=Computers par défaut."""
     try:
         computer_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
         samdb.delete(computer_dn)
@@ -182,319 +157,303 @@ def delete_computer(samdb, domain_dn, computer_name):
         return f"[ERROR] Impossible de supprimer l'ordinateur : {e}"
 
 def move_computer(samdb, domain_dn, computer_name, target_ou):
-    """
-    Déplace un ordinateur du conteneur par défaut (CN=Computers) vers une OU cible.
-    Note : cette opération modifie le DN de l'objet ordinateur.
-    """
     try:
         old_dn = f"CN={computer_name},CN=Computers,{domain_dn}"
         new_dn = f"CN={computer_name},OU={target_ou},{domain_dn}"
-        # On utilise ici une méthode de renommage (déplacement) de l'objet.
         samdb.rename(old_dn, new_dn)
         return f"[OK] Ordinateur '{computer_name}' déplacé vers l'OU '{target_ou}'."
     except Exception as e:
         return f"[ERROR] Impossible de déplacer l'ordinateur : {e}"
 
-# --- Construction de l'arbre des OUs ---
-def build_ou_tree(samdb, domain_dn):
-    """
-    Construit un arbre hiérarchique des OUs.
-    Chaque nœud est un dictionnaire avec les clés : 'name', 'dn', et 'children'.
-    """
-    ous = samdb.search(base=domain_dn, expression="(objectClass=organizationalUnit)", attrs=["ou", "dn"])
-    nodes = {}
-    for entry in ous:
-        dn = entry.get("dn")
-        if dn is None:
-            continue
-        dn_str = str(dn)
-        name = entry.get("ou", ["(sans nom)"])[0]
-        if isinstance(name, bytes):
-            name = name.decode('utf-8')
-        nodes[dn_str] = {"name": name, "dn": dn_str, "children": []}
-    tree = []
-    for dn_str, node in nodes.items():
-        if "," in dn_str:
-            parent_dn_str = dn_str.split(",", 1)[1]
-            if parent_dn_str in nodes:
-                nodes[parent_dn_str]["children"].append(node)
-            else:
-                tree.append(node)
+# --- Interface TUI hybride ---
+
+def refresh_data(domain_info):
+    """Rafraîchit et retourne les données pour chaque onglet."""
+    data = {}
+    data['ous'] = list_ous(domain_info["samdb"], domain_info["domain_dn"])
+    data['groupes'] = list_groups(domain_info["samdb"], domain_info["domain_dn"])
+    data['gpos'] = list_gpos(domain_info["samdb"], domain_info["domain_dn"])
+    data['users'] = list_users(domain_info["samdb"], domain_info["domain_dn"])
+    data['computers'] = list_computers(domain_info["samdb"], domain_info["domain_dn"])
+    data['dashboard'] = {
+         "OUs": len(data['ous']),
+         "Groupes": len(data['groupes']) if isinstance(data['groupes'], list) else 0,
+         "GPOs": len(data['gpos']),
+         "Utilisateurs": len(data['users']),
+         "Ordinateurs": len(data['computers'])
+    }
+    return data
+
+def get_items_for_tab(current_tab, data):
+    if current_tab == 0:  # Dashboard
+        return list(data['dashboard'].items())
+    elif current_tab == 1:
+        return data['ous']
+    elif current_tab == 2:
+        return data['groupes'] if isinstance(data['groupes'], list) else []
+    elif current_tab == 3:
+        return data['gpos']
+    elif current_tab == 4:
+        return data['users']
+    elif current_tab == 5:
+        return data['computers']
+    return []
+
+def draw_header(win, domain_info):
+    win.clear()
+    title = "Samba AD Management"
+    domain_str = f"Domaine : {domain_info['domain_name']}"
+    user_str = f"Utilisateur : {domain_info['user']}"
+    win.addstr(0, 2, title, curses.A_BOLD)
+    win.addstr(1, 2, domain_str)
+    win.addstr(1, max(40, len(domain_str)+5), user_str)
+    win.hline(2, 0, curses.ACS_HLINE, win.getmaxyx()[1])
+    win.refresh()
+
+def draw_tab_bar(win, current_tab, tabs):
+    win.clear()
+    x = 2
+    for idx, tab in enumerate(tabs):
+        if idx == current_tab:
+            win.addstr(0, x, f"[{tab}]", curses.A_REVERSE)
         else:
-            tree.append(node)
-    return tree
+            win.addstr(0, x, f" {tab} ")
+        x += len(tab) + 3
+    win.hline(1, 0, curses.ACS_HLINE, win.getmaxyx()[1])
+    win.refresh()
 
-def display_ou_tree(stdscr, tree, level=0, y=0):
-    """
-    Affiche l'arbre des OUs sur l'écran curses.
-    """
-    for node in tree:
-        stdscr.addstr(y, level * 4, f"- {node['name']}")
-        y += 1
-        if node["children"]:
-            y = display_ou_tree(stdscr, node["children"], level + 1, y)
-    return y
+def draw_status_bar(win, message):
+    win.clear()
+    max_y, max_x = win.getmaxyx()
+    status = message if message else "F1: Aide | F5: Actualiser | /: Filtrer | c: Créer | d: Supprimer | ESC: Quitter"
+    win.addstr(0, 0, status[:max_x-1])
+    win.refresh()
 
-def ou_tree_navigation_menu(stdscr, domain_info):
-    """
-    Affiche un menu de navigation pour l'arbre des OUs.
-    """
-    samdb = domain_info["samdb"]
-    domain_dn = domain_info["domain_dn"]
-    tree = build_ou_tree(samdb, domain_dn)
-    stdscr.clear()
-    stdscr.addstr(0, 0, "Arbre des Unités Organisationnelles", curses.A_BOLD)
-    stdscr.addstr(1, 0, "=" * 50)
-    display_ou_tree(stdscr, tree, level=0, y=3)
-    stdscr.addstr(20, 0, "[Appuyez sur une touche pour revenir au menu...]")
-    stdscr.refresh()
-    stdscr.getch()
+def draw_sidebar(win, current_tab, data, selected_index, filter_str):
+    win.clear()
+    items = get_items_for_tab(current_tab, data)
+    if filter_str:
+        items = [item for item in items if filter_str.lower() in str(item).lower()]
+    for idx, item in enumerate(items):
+        display_text = f"{item}" if current_tab != 0 else f"{item[0]}: {item[1]}"
+        if idx == selected_index:
+            win.addstr(idx+1, 1, display_text, curses.A_REVERSE)
+        else:
+            win.addstr(idx+1, 1, display_text)
+    win.box()
+    win.refresh()
 
-# --- Interface Curses ---
-def display_menu(stdscr, title, options):
-    """Affiche un menu et retourne l'option sélectionnée."""
-    current_row = 0
-    while True:
-        stdscr.clear()
-        stdscr.addstr(0, 0, f"[ {title} ]", curses.A_BOLD)
-        stdscr.addstr(1, 0, "=" * 50)
-        for idx, option in enumerate(options):
-            if idx == current_row:
-                stdscr.addstr(idx + 3, 0, f"> {option}", curses.A_REVERSE)
-            else:
-                stdscr.addstr(idx + 3, 0, f"- {option}")
-        stdscr.refresh()
-        key = stdscr.getch()
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
-            current_row += 1
-        elif key in [10, 13]:  # Entrée
-            return current_row
-
-def prompt_input(stdscr, prompt, y=2, x=0, echo=True, max_len=40):
-    """Affiche une invite et récupère la saisie de l'utilisateur."""
-    stdscr.clear()
-    stdscr.addstr(y, x, prompt)
-    stdscr.refresh()
-    if echo:
-        curses.echo()
+def draw_content(win, current_tab, data, selected_index, filter_str):
+    win.clear()
+    items = get_items_for_tab(current_tab, data)
+    if filter_str:
+        items = [item for item in items if filter_str.lower() in str(item).lower()]
+    if items:
+        selected_item = items[selected_index]
+        if current_tab == 0:
+            details = f"{selected_item[0]} : {selected_item[1]}"
+        else:
+            details = f"Nom : {selected_item}"
+        win.addstr(1, 2, details)
     else:
-        curses.noecho()
-    input_str = stdscr.getstr(y, x + len(prompt) + 1, max_len).decode('utf-8')
-    curses.noecho()
-    return input_str
+        win.addstr(1, 2, "Aucun élément")
+    win.box()
+    win.refresh()
 
-def display_message(stdscr, message):
-    """
-    Affiche un message en adaptant le texte à la taille de la fenêtre et attend une touche.
-    """
-    stdscr.clear()
+def prompt_filter(stdscr):
+    curses.echo()
     max_y, max_x = stdscr.getmaxyx()
-    # On laisse un caractère de marge pour éviter les débordements
-    wrapped_lines = []
-    for line in message.splitlines():
-        wrapped = textwrap.wrap(line, width=max_x - 1)
-        if not wrapped:
-            wrapped_lines.append("")
-        else:
-            wrapped_lines.extend(wrapped)
-    # Limiter le nombre de lignes affichées
-    if len(wrapped_lines) > max_y - 1:
-        wrapped_lines = wrapped_lines[:max_y - 1]
-    for idx, line in enumerate(wrapped_lines):
-        try:
-            stdscr.addstr(idx, 0, line)
-        except curses.error:
-            pass
-    try:
-        stdscr.addstr(max_y - 1, 0, "[Appuyez sur une touche pour continuer...]")
-    except curses.error:
-        pass
-    stdscr.refresh()
-    stdscr.getch()
+    win = curses.newwin(3, max_x//2, max_y//2 - 1, max_x//4)
+    win.box()
+    win.addstr(1, 2, "Filtrer : ")
+    win.refresh()
+    filter_str = win.getstr(1, 12, 20).decode('utf-8')
+    curses.noecho()
+    return filter_str
 
-# --- Sous-menus ---
-def ou_menu(stdscr, domain_info):
-    """Menu pour gérer les OUs."""
-    options = ["Lister les OUs", "Créer une OU", "Supprimer une OU", "Navigation arbre OU", "Retour"]
-    while True:
-        choice = display_menu(stdscr, "Gestion des OUs", options)
-        if choice == 0:
-            result = list_ous(domain_info["samdb"], domain_info["domain_dn"])
-        elif choice == 1:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de la nouvelle OU: ")
-            curses.echo()
-            ou_name = stdscr.getstr(2, 40, 20).decode('utf-8')
-            curses.noecho()
-            result = create_ou(domain_info["samdb"], domain_info["domain_dn"], ou_name)
-        elif choice == 2:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'OU à supprimer: ")
-            curses.echo()
-            ou_name = stdscr.getstr(2, 40, 20).decode('utf-8')
-            curses.noecho()
-            result = delete_ou(domain_info["samdb"], domain_info["domain_dn"], ou_name)
-        elif choice == 3:
-            ou_tree_navigation_menu(stdscr, domain_info)
-            continue
-        elif choice == 4:
-            break
-        stdscr.clear()
-        stdscr.addstr(2, 0, safe_display(result))
-        stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
-        stdscr.refresh()
-        stdscr.getch()
-
-def group_menu(stdscr, domain_info):
-    """Menu pour gérer les groupes."""
-    options = ["Lister les groupes", "Créer un groupe", "Supprimer un groupe", "Retour"]
-    while True:
-        choice = display_menu(stdscr, "Gestion des groupes", options)
-        if choice == 0:
-            result = list_groups(domain_info["samdb"], domain_info["domain_dn"])
-        elif choice == 1:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom du groupe à créer: ")
-            curses.echo()
-            group_name = stdscr.getstr(2, 40, 20).decode('utf-8')
-            curses.noecho()
-            result = create_group(domain_info["samdb"], domain_info["domain_dn"], group_name)
-        elif choice == 2:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom du groupe à supprimer: ")
-            curses.echo()
-            group_name = stdscr.getstr(2, 40, 20).decode('utf-8')
-            curses.noecho()
-            result = delete_group(domain_info["samdb"], domain_info["domain_dn"], group_name)
-        elif choice == 3:
-            break
-        stdscr.clear()
-        stdscr.addstr(2, 0, safe_display(result))
-        stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
-        stdscr.refresh()
-        stdscr.getch()
-
-def gpo_menu(stdscr, domain_info):
-    """Menu pour gérer les GPOs."""
-    options = ["Lister les GPOs", "Créer une GPO", "Supprimer un GPO", "Retour"]
-    while True:
-        choice = display_menu(stdscr, "Gestion des GPOs", options)
-        if choice == 0:
-            result = list_gpos(domain_info["samdb"], domain_info["domain_dn"])
-        elif choice == 1:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom du GPO à créer: ")
-            curses.echo()
-            gpo_name = stdscr.getstr(2, 35, 20).decode('utf-8')
-            curses.noecho()
-            result = create_full_gpo(gpo_name)
-        elif choice == 2:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom du GPO à supprimer: ")
-            curses.echo()
-            gpo_name = stdscr.getstr(2, 35, 20).decode('utf-8')
-            curses.noecho()
-            result = delete_gpo(domain_info["samdb"], domain_info["domain_dn"], gpo_name)
-        elif choice == 3:
-            break
-        display_message(stdscr, safe_display(result))
-
-def user_menu(stdscr, domain_info):
-    """Menu pour gérer les utilisateurs."""
-    options = ["Lister les utilisateurs", "Créer un utilisateur", "Supprimer un utilisateur", "Retour"]
-    while True:
-        choice = display_menu(stdscr, "Gestion des utilisateurs", options)
-        if choice == 0:
-            result = list_users(domain_info["samdb"], domain_info["domain_dn"])
-        elif choice == 1:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'utilisateur à créer: ")
-            curses.echo()
-            user_name = stdscr.getstr(2, 45, 20).decode('utf-8')
-            stdscr.addstr(3, 0, "Entrez le mot de passe: ")
-            user_password = stdscr.getstr(3, 25, 20).decode('utf-8')
-            curses.noecho()
-            result = create_user(domain_info["samdb"], domain_info["domain_dn"], user_name, user_password)
-        elif choice == 2:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'utilisateur à supprimer: ")
-            curses.echo()
-            user_name = stdscr.getstr(2, 45, 20).decode('utf-8')
-            curses.noecho()
-            result = delete_user(domain_info["samdb"], domain_info["domain_dn"], user_name)
-        elif choice == 3:
-            break
-        stdscr.clear()
-        stdscr.addstr(2, 0, safe_display(result))
-        stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
-        stdscr.refresh()
-        stdscr.getch()
-
-def computer_menu(stdscr, domain_info):
-    """Menu pour gérer les ordinateurs."""
-    options = ["Lister les ordinateurs", "Créer un ordinateur", "Supprimer un ordinateur", "Déplacer un ordinateur", "Retour"]
-    while True:
-        choice = display_menu(stdscr, "Gestion des ordinateurs", options)
-        if choice == 0:
-            result = list_computers(domain_info["samdb"], domain_info["domain_dn"])
-        elif choice == 1:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à créer: ")
-            curses.echo()
-            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
-            curses.noecho()
-            result = create_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name)
-        elif choice == 2:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à supprimer: ")
-            curses.echo()
-            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
-            curses.noecho()
-            result = delete_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name)
-        elif choice == 3:
-            stdscr.clear()
-            stdscr.addstr(2, 0, "Entrez le nom de l'ordinateur à déplacer: ")
-            curses.echo()
-            comp_name = stdscr.getstr(2, 45, 20).decode('utf-8')
-            stdscr.addstr(3, 0, "Entrez le nom de l'OU cible: ")
-            target_ou = stdscr.getstr(3, 35, 20).decode('utf-8')
-            curses.noecho()
-            result = move_computer(domain_info["samdb"], domain_info["domain_dn"], comp_name, target_ou)
-        elif choice == 4:
-            break
-        stdscr.clear()
-        stdscr.addstr(2, 0, safe_display(result))
-        stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
-        stdscr.refresh()
-        stdscr.getch()
-
-# --- Menu principal ---
-def main_menu(stdscr, domain_info):
-    """Affiche le menu principal et dirige vers les sous-menus."""
-    options = [
-        "Gestion des OUs",
-        "Gestion des GPOs",
-        "Gestion des groupes",
-        "Gestion des utilisateurs",
-        "Gestion des ordinateurs",
-        "Quitter"
+def show_help(stdscr):
+    max_y, max_x = stdscr.getmaxyx()
+    help_text = [
+        "Aide - Raccourcis clavier:",
+        "F1 : Afficher cette aide",
+        "F5 : Actualiser les données",
+        "/  : Filtrer la liste",
+        "c  : Créer un nouvel objet",
+        "d  : Supprimer l'objet sélectionné",
+        "Flèches : Navigation",
+        "ESC : Quitter l'application",
+        "",
+        "Appuyez sur une touche pour revenir."
     ]
+    win = curses.newwin(len(help_text)+2, max_x//2, max_y//2 - len(help_text)//2, max_x//4)
+    win.box()
+    for idx, line in enumerate(help_text):
+        win.addstr(idx+1, 2, line)
+    win.refresh()
+    win.getch()
+
+def modal_input(stdscr, title, prompt):
+    curses.echo()
+    max_y, max_x = stdscr.getmaxyx()
+    width = max(len(prompt) + 20, 40)
+    win = curses.newwin(5, width, max_y//2 - 2, (max_x - width)//2)
+    win.box()
+    win.addstr(0, 2, title, curses.A_BOLD)
+    win.addstr(2, 2, prompt)
+    win.refresh()
+    input_val = win.getstr(2, len(prompt) + 3, 20).decode('utf-8')
+    curses.noecho()
+    return input_val
+
+def modal_input_multiple(stdscr, title, prompts):
+    responses = {}
+    curses.echo()
+    max_y, max_x = stdscr.getmaxyx()
+    width = max(max(len(p) for p in prompts) + 20, 50)
+    height = len(prompts) + 4
+    win = curses.newwin(height, width, max_y//2 - height//2, (max_x - width)//2)
+    win.box()
+    win.addstr(0, 2, title, curses.A_BOLD)
+    for idx, prompt in enumerate(prompts):
+        win.addstr(idx+2, 2, prompt)
+        win.refresh()
+        resp = win.getstr(idx+2, len(prompt) + 3, 20).decode('utf-8')
+        responses[prompt] = resp
+    curses.noecho()
+    return responses
+
+def modal_confirm(stdscr, prompt):
+    curses.echo()
+    max_y, max_x = stdscr.getmaxyx()
+    width = len(prompt) + 10
+    win = curses.newwin(3, width, max_y//2 - 1, (max_x - width)//2)
+    win.box()
+    win.addstr(1, 2, prompt)
+    win.refresh()
+    ch = win.getch()
+    curses.noecho()
+    return (chr(ch).lower() == 'y')
+
+def handle_create_action(stdscr, current_tab, domain_info):
+    if current_tab == 1:  # OUs
+        name = modal_input(stdscr, "Création d'OU", "Nom de la nouvelle OU: ")
+        if name:
+            return create_ou(domain_info["samdb"], domain_info["domain_dn"], name)
+    elif current_tab == 2:  # Groupes
+        name = modal_input(stdscr, "Création de Groupe", "Nom du nouveau groupe: ")
+        if name:
+            return create_group(domain_info["samdb"], domain_info["domain_dn"], name)
+    elif current_tab == 3:  # GPOs
+        name = modal_input(stdscr, "Création de GPO", "Nom du nouveau GPO: ")
+        if name:
+            return create_full_gpo(name)
+    elif current_tab == 4:  # Utilisateurs
+        resp = modal_input_multiple(stdscr, "Création d'Utilisateur", ["Nom d'utilisateur: ", "Mot de passe: "])
+        if resp:
+            username = resp.get("Nom d'utilisateur: ")
+            password = resp.get("Mot de passe: ")
+            if username and password:
+                return create_user(domain_info["samdb"], domain_info["domain_dn"], username, password)
+    elif current_tab == 5:  # Ordinateurs
+        name = modal_input(stdscr, "Création d'Ordinateur", "Nom de l'ordinateur: ")
+        if name:
+            return create_computer(domain_info["samdb"], domain_info["domain_dn"], name)
+    return "Opération annulée."
+
+def handle_delete_action(stdscr, current_tab, data, selected_index, domain_info):
+    items = get_items_for_tab(current_tab, data)
+    if not items:
+        return "Aucun élément à supprimer."
+    selected_item = items[selected_index]
+    confirm = modal_confirm(stdscr, f"Supprimer {selected_item}? (y/n): ")
+    if confirm:
+        if current_tab == 1:  # OUs
+            return delete_ou(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+        elif current_tab == 2:  # Groupes
+            return delete_group(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+        elif current_tab == 3:  # GPOs
+            return delete_gpo(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+        elif current_tab == 4:  # Utilisateurs
+            return delete_user(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+        elif current_tab == 5:  # Ordinateurs
+            return delete_computer(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+    return "Opération annulée."
+
+def main_tui(stdscr, domain_info):
+    curses.curs_set(0)
+    stdscr.nodelay(False)
+    stdscr.timeout(100)
+    tabs = ["Dashboard", "OUs", "Groupes", "GPOs", "Utilisateurs", "Ordinateurs"]
+    current_tab = 0
+    selected_index = 0
+    filter_str = ""
+    notification = ""
+    data = refresh_data(domain_info)
+
     while True:
-        choice = display_menu(stdscr, f"Interface Samba AD - {domain_info['domain_name']}", options)
-        if choice == 0:
-            ou_menu(stdscr, domain_info)
-        elif choice == 1:
-            gpo_menu(stdscr, domain_info)
-        elif choice == 2:
-            group_menu(stdscr, domain_info)
-        elif choice == 3:
-            user_menu(stdscr, domain_info)
-        elif choice == 4:
-            computer_menu(stdscr, domain_info)
-        elif choice == 5:
+        stdscr.clear()
+        max_y, max_x = stdscr.getmaxyx()
+
+        # Définition des zones
+        header_win = stdscr.subwin(3, max_x, 0, 0)
+        tab_win = stdscr.subwin(2, max_x, 3, 0)
+        content_height = max_y - 6 - 1  # - header, tab, status bar
+        content_win = stdscr.subwin(content_height, max_x, 5, 0)
+        status_win = stdscr.subwin(1, max_x, max_y - 1, 0)
+
+        # Zones du content (split screen)
+        left_width = max_x // 3
+        right_width = max_x - left_width
+        sidebar_win = content_win.derwin(content_height, left_width, 0, 0)
+        content_panel_win = content_win.derwin(content_height, right_width, 0, left_width)
+
+        # Dessin des zones
+        draw_header(header_win, domain_info)
+        draw_tab_bar(tab_win, current_tab, tabs)
+        draw_sidebar(sidebar_win, current_tab, data, selected_index, filter_str)
+        draw_content(content_panel_win, current_tab, data, selected_index, filter_str)
+        draw_status_bar(status_win, notification)
+
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key == curses.KEY_LEFT:
+            current_tab = (current_tab - 1) % len(tabs)
+            selected_index = 0
+            filter_str = ""
+        elif key == curses.KEY_RIGHT:
+            current_tab = (current_tab + 1) % len(tabs)
+            selected_index = 0
+            filter_str = ""
+        elif key == curses.KEY_UP:
+            selected_index = max(selected_index - 1, 0)
+        elif key == curses.KEY_DOWN:
+            items = get_items_for_tab(current_tab, data)
+            if filter_str:
+                items = [item for item in items if filter_str.lower() in str(item).lower()]
+            selected_index = min(selected_index + 1, len(items) - 1) if items else 0
+        elif key == ord('/'):
+            filter_str = prompt_filter(stdscr)
+            selected_index = 0
+        elif key == ord('c'):
+            notification = handle_create_action(stdscr, current_tab, domain_info)
+            data = refresh_data(domain_info)
+            selected_index = 0
+        elif key == ord('d'):
+            notification = handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
+            data = refresh_data(domain_info)
+            selected_index = 0
+        elif key == curses.KEY_F5:
+            data = refresh_data(domain_info)
+            notification = "Données actualisées."
+        elif key == curses.KEY_F1:
+            show_help(stdscr)
+        elif key == 27:  # ESC
             break
+
+    # Fin du programme
+    stdscr.clear()
+    stdscr.refresh()
 
 # --- Lancer l'application ---
 if __name__ == "__main__":
@@ -504,4 +463,4 @@ if __name__ == "__main__":
     if isinstance(domain_info, str):
         print(domain_info)
     else:
-        curses.wrapper(main_menu, domain_info)
+        curses.wrapper(main_tui, domain_info)
