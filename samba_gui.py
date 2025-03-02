@@ -225,6 +225,28 @@ def display_menu(stdscr, title, options):
         elif key in [10, 13]:  # Entrée
             return current_row
 
+# --- Interface Curses ---
+def display_menu(stdscr, title, options):
+    """Affiche un menu et retourne l'option sélectionnée."""
+    current_row = 0
+    while True:
+        stdscr.clear()
+        stdscr.addstr(0, 0, f"[ {title} ]", curses.A_BOLD)
+        stdscr.addstr(1, 0, "=" * 50)
+        for idx, option in enumerate(options):
+            if idx == current_row:
+                stdscr.addstr(idx + 3, 0, f"> {option}", curses.A_REVERSE)
+            else:
+                stdscr.addstr(idx + 3, 0, f"- {option}")
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key == curses.KEY_UP and current_row > 0:
+            current_row -= 1
+        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
+            current_row += 1
+        elif key in [10, 13]:  # Entrée
+            return current_row
+
 def prompt_input(stdscr, prompt, y=2, x=0, echo=True, max_len=40):
     """Affiche une invite et récupère la saisie de l'utilisateur."""
     stdscr.clear()
@@ -239,10 +261,31 @@ def prompt_input(stdscr, prompt, y=2, x=0, echo=True, max_len=40):
     return input_str
 
 def display_message(stdscr, message):
-    """Affiche un message et attend une touche."""
+    """
+    Affiche un message en adaptant le texte à la taille de la fenêtre et attend une touche.
+    """
     stdscr.clear()
-    stdscr.addstr(2, 0, message)
-    stdscr.addstr(4, 0, "[Appuyez sur une touche pour continuer...]")
+    max_y, max_x = stdscr.getmaxyx()
+    # On laisse un caractère de marge pour éviter les débordements
+    wrapped_lines = []
+    for line in message.splitlines():
+        wrapped = textwrap.wrap(line, width=max_x - 1)
+        if not wrapped:
+            wrapped_lines.append("")
+        else:
+            wrapped_lines.extend(wrapped)
+    # Limiter le nombre de lignes affichées
+    if len(wrapped_lines) > max_y - 1:
+        wrapped_lines = wrapped_lines[:max_y - 1]
+    for idx, line in enumerate(wrapped_lines):
+        try:
+            stdscr.addstr(idx, 0, line)
+        except curses.error:
+            pass
+    try:
+        stdscr.addstr(max_y - 1, 0, "[Appuyez sur une touche pour continuer...]")
+    except curses.error:
+        pass
     stdscr.refresh()
     stdscr.getch()
 
@@ -310,7 +353,7 @@ def group_menu(stdscr, domain_info):
 
 def gpo_menu(stdscr, domain_info):
     """Menu pour gérer les GPOs."""
-    options = ["Lister les GPOs", "Créer un GPO complet", "Supprimer un GPO", "Retour"]
+    options = ["Lister les GPOs", "Créer une GPO", "Supprimer un GPO", "Retour"]
     while True:
         choice = display_menu(stdscr, "Gestion des GPOs", options)
         if choice == 0:
