@@ -72,7 +72,7 @@ echo "" > "$USER_FILE"
 
 for USER in "${USERS[@]}"; do
     PASSWORD=$(openssl rand -base64 16)
-    samba-tool user create "$USER" "$PASSWORD" --must-change-at-next-login=no | tee -a "$LOG_FILE"
+    samba-tool user create "$USER" "$PASSWORD" | tee -a "$LOG_FILE"
     # Les utilisateurs créés sont automatiquement ajoutés au groupe "Domain Users"
     echo "$USER : $PASSWORD" >> "$USER_FILE"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur $USER créé avec mot de passe généré." | tee -a "$LOG_FILE"
