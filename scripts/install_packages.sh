@@ -6,7 +6,7 @@ rm -f "$LOG_FILE"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de l'installation des paquets" | tee -a "$LOG_FILE"
 
 apt update && apt upgrade -y | tee -a "$LOG_FILE"
-apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban sudo ufw dnsutils openssh-server iptables-persistent | tee -a "$LOG_FILE"
+apt install -y samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban sudo ufw dnsutils openssh-server iptables-persistent chronyd | tee -a "$LOG_FILE"
 
 # Vérification des paquets installés
 for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban sudo ufw dnsutils openssh-server; do
