@@ -71,7 +71,7 @@ cat <<EOF > /etc/samba/smb.conf
     realm = $REALM
     workgroup = $DOMAIN
     server role = active directory domain controller
-    log file = /var/log/samba/log.%m
+    log file = /var/log/samba/log.smbd
     log level = 3 auth:10
     max log size = 5000
     smb ports = 445
