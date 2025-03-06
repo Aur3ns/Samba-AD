@@ -105,8 +105,15 @@ else
     chmod 600 "$SMB_PASSWD_FILE"
 fi
 
+
 ########################################################
-# 3. Chargement des identifiants et authentification Kerberos
+# 3. Application des BONNES permissions sur le SYSVOL ou les GPOS seront stockées
+chown -R root:root /var/lib/samba/sysvol
+chmod -R 755 /var/lib/samba/sysvol
+########################################################
+
+########################################################
+# 4. Chargement des identifiants et authentification Kerberos
 ########################################################
 log "🔑 Chargement des identifiants depuis $SMB_PASSWD_FILE..."
 
@@ -151,7 +158,7 @@ fi
 log "✅ Ticket Kerberos obtenu avec succès."
 
 ########################################################
-# 4. Vérification du DC et des permissions
+# 5. Vérification du DC et des permissions
 ########################################################
 log "🔍 Vérification de la connectivité avec le DC..."
 samba-tool dbcheck --cross-ncs 2>&1 | tee -a "$LOG_FILE"
@@ -162,7 +169,7 @@ fi
 log "✅ DC accessible, on continue."
 
 ########################################################
-# 5. Vérification et correction des permissions SYSVOL
+# 6. Vérification et correction des permissions SYSVOL
 ########################################################
 log "🔍 Vérification et correction des permissions SYSVOL..."
 samba-tool ntacl sysvolreset | tee -a "$LOG_FILE"
@@ -171,7 +178,7 @@ chmod -R 770 /var/lib/samba/sysvol
 log "✅ Permissions SYSVOL mises à jour !"
 
 ########################################################
-# 6. Création, liaison et application des GPOs
+# 7. Création, liaison et application des GPOs
 ########################################################
 log "🚀 Application des GPOs..."
 
@@ -231,7 +238,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     fi
 
     ########################################################
-    # 6.1 Application des paramètres de la GPO à partir d'un template
+    # 7.1 Application des paramètres de la GPO à partir d'un template
     ########################################################
     # Si un fichier de template (.pol) existe pour ce GPO dans $TEMPLATE_DIR, on le copie dans le dossier Machine
     TEMPLATE_FILE="$TEMPLATE_DIR/${GPO_NAME}.pol"
@@ -245,7 +252,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
 done
 
 ########################################################
-# 7. Fin de la configuration
+# 8. Fin de la configuration
 ########################################################
 log "==============================="
 log "✅ Configuration complète des GPOs !"
