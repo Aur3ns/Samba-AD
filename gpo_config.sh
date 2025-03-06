@@ -1,15 +1,24 @@
 #!/bin/bash
-# Ce script crée le répertoire /root/gpo_templates avec les fichiers .pol pour les GPOs
-# (Disable_CMD, Force_SMB_Encryption, Block_Temp_Executables, Disable_Telemetry,
-# Block_USB_Access et Restrict_Control_Panel) puis configure et applique ces GPOs sur Samba.
+# Script de configuration des GPOs sur Samba AD
+# Ce script crée le répertoire /root/gpo_templates avec les fichiers .pol pour plusieurs GPOs,
+# gère le fichier d'identifiants, vérifie et corrige les permissions SYSVOL,
+# obtient un ticket Kerberos et crée/liens les GPOs définies dans l'environnement.
+#
+# GPOs traitées :
+#   - Disable_CMD
+#   - Force_SMB_Encryption
+#   - Block_Temp_Executables
+#   - Disable_Telemetry
+#   - Block_USB_Access
+#   - Restrict_Control_Panel
+#   - NTP_Sync
+#   - Logon_Warning (affiche un message d'avertissement à l'ouverture de session)
 
 ###############################################
 # 0. Création des templates de paramètres .pol
 ###############################################
 
 TEMPLATE_DIR="/root/gpo_templates"
-
-# Créer le répertoire s'il n'existe pas déjà
 mkdir -p "$TEMPLATE_DIR"
 
 # 1. Disable_CMD.pol : désactive l'accès à l'invite de commandes
@@ -60,6 +69,32 @@ cat << 'EOF' > "$TEMPLATE_DIR/Restrict_Control_Panel.pol"
 "ProhibitCPL"=dword:00000001
 EOF
 
+# 7. NTP_Sync.pol : configure le service NTP (les clients utilisent le DC comme source de temps)
+cat << 'EOF' > "$TEMPLATE_DIR/NTP_Sync.pol"
+; NTP_Sync.pol
+; Paramètres de registre pour configurer le service de temps Windows
+[Software\Policies\Microsoft\Windows\W32Time\TimeProviders\NtpClient]
+"Enabled"=dword:00000001
+"NtpServer"="srv-ns.northstar.com,0x9"
+"CrossSiteSyncFlags"=dword:00000002
+"SpecialPollInterval"=dword:0000ea60
+"EventLogFlags"=dword:00000001
+"Type"="NTP"
+
+; Si vous ne souhaitez pas que ce client agisse comme serveur NTP
+[Software\Policies\Microsoft\Windows\W32Time\TimeProviders\NtpServer]
+"Enabled"=dword:00000000
+EOF
+
+# 8. Logon_Warning.pol : affiche un message d'avertissement à l'ouverture de session
+cat << 'EOF' > "$TEMPLATE_DIR/Logon_Warning.pol"
+; Registry.pol file for Logon Warning
+; Affiche un message d'avertissement à chaque ouverture de session
+[Software\Policies\Microsoft\Windows\System]
+"legalnoticecaption"="Attention"
+"legalnoticetext"="Accès réservé. Toute activité est surveillée. Toute utilisation non autorisée est interdite."
+EOF
+
 echo "Fichiers .pol créés dans $TEMPLATE_DIR"
 
 ###############################################
@@ -69,13 +104,12 @@ echo "Fichiers .pol créés dans $TEMPLATE_DIR"
 LOG_FILE="/var/log/samba-gpo-setup.log"
 DOMAIN="northstar.com"
 SMB_PASSWD_FILE="/root/.smbpasswd"
-KRB5_CACHE="/tmp/krb5cc_samba"
 
-# Vérification du fichier de log
+# Préparation du fichier de log
 touch "$LOG_FILE"
 chmod 600 "$LOG_FILE"
 
-# Fonction pour journaliser et afficher les messages
+# Fonction de log
 log() {
     echo -e "$1" | tee -a "$LOG_FILE"
 }
@@ -89,69 +123,42 @@ log "==============================="
 ########################################################
 if [ ! -f "$SMB_PASSWD_FILE" ]; then
     log "🔐 Le fichier $SMB_PASSWD_FILE n'existe pas. Création en cours..."
-    
     read -rp "👤 Entrez le nom d'utilisateur du domaine : " ADMIN_USER
     read -rsp "🔑 Entrez le mot de passe : " ADMIN_PASSWORD
     echo ""
-
-    # Écriture dans le fichier avec permissions sécurisées
     echo "username=$ADMIN_USER" > "$SMB_PASSWD_FILE"
     echo "password=$ADMIN_PASSWORD" >> "$SMB_PASSWD_FILE"
     chmod 600 "$SMB_PASSWD_FILE"
-
     log "✅ Fichier d'identifiants créé et sécurisé."
 else
     log "🔐 Le fichier d'identifiants existe déjà. Vérification des permissions..."
     chmod 600 "$SMB_PASSWD_FILE"
 fi
 
-
 ########################################################
-# 3. Application des BONNES permissions sur le SYSVOL ou les GPOS seront stockées
-samba-tool ntacl sysvolreset
+# 3. Application des permissions sur le SYSVOL
+########################################################
+log "🔍 Réinitialisation des ACL sur SYSVOL..."
+samba-tool ntacl sysvolreset >> "$LOG_FILE" 2>&1
 chown -R root:root /var/lib/samba/sysvol
 chmod -R 755 /var/lib/samba/sysvol
 systemctl restart samba-ad-dc
-########################################################
+log "✅ Permissions SYSVOL appliquées."
 
 ########################################################
 # 4. Chargement des identifiants et authentification Kerberos
 ########################################################
 log "🔑 Chargement des identifiants depuis $SMB_PASSWD_FILE..."
-
-# Lire les identifiants depuis le fichier sécurisé
 ADMIN_USER=$(grep '^username=' "$SMB_PASSWD_FILE" | cut -d'=' -f2)
 ADMIN_PASSWORD=$(grep '^password=' "$SMB_PASSWD_FILE" | cut -d'=' -f2)
 
-# Vérifier si les identifiants ont bien été extraits
-if [ ! -f "$SMB_PASSWD_FILE" ] || ! grep -q '^username=' "$SMB_PASSWD_FILE" || ! grep -q '^password=' "$SMB_PASSWD_FILE"; then
-    log "❌ Erreur : Fichier d'identifiants manquant ou mal formaté."
-    log "📌 Correction automatique : Création d'un nouveau fichier."
-
-    read -rp "👤 Entrez le nom d'utilisateur du domaine : " ADMIN_USER
-    read -rsp "🔑 Entrez le mot de passe : " ADMIN_PASSWORD
-    echo ""
-
-    # Écriture dans le fichier avec permissions sécurisées
-    echo "username=$ADMIN_USER" > "$SMB_PASSWD_FILE"
-    echo "password=$ADMIN_PASSWORD" >> "$SMB_PASSWD_FILE"
-    chmod 600 "$SMB_PASSWD_FILE"
-
-    log "✅ Fichier d'identifiants créé et sécurisé."
-fi
-
-# Lecture et nettoyage des identifiants
-ADMIN_USER=$(grep '^username=' "$SMB_PASSWD_FILE" | awk -F '=' '{gsub(/^ +| +$/, "", $2); print $2}')
-ADMIN_PASSWORD=$(grep '^password=' "$SMB_PASSWD_FILE" | awk -F '=' '{gsub(/^ +| +$/, "", $2); print $2}')
-
 if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_PASSWORD" ]; then
-    log "❌ Erreur critique : Impossible de récupérer les identifiants après correction."
+    log "❌ Erreur : Impossible de récupérer les identifiants depuis $SMB_PASSWD_FILE."
     exit 1
 fi
 
-log "🔑 Obtention d'un ticket Kerberos pour $ADMIN_USER..."
-
 DOMAIN_UPPER=$(echo "$DOMAIN" | tr '[:lower:]' '[:upper:]')
+log "🔑 Obtention d'un ticket Kerberos pour $ADMIN_USER@$DOMAIN_UPPER..."
 echo "$ADMIN_PASSWORD" | kinit "$ADMIN_USER@$DOMAIN_UPPER" 2>> "$LOG_FILE"
 if [ $? -ne 0 ]; then
     log "❌ Erreur : Impossible d'obtenir un ticket Kerberos ! Vérifiez les identifiants et la connectivité."
@@ -160,7 +167,7 @@ fi
 log "✅ Ticket Kerberos obtenu avec succès."
 
 ########################################################
-# 5. Vérification du DC et des permissions
+# 5. Vérification de la connectivité et correction des permissions SYSVOL
 ########################################################
 log "🔍 Vérification de la connectivité avec le DC..."
 samba-tool dbcheck --cross-ncs 2>&1 | tee -a "$LOG_FILE"
@@ -170,20 +177,18 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
 fi
 log "✅ DC accessible, on continue."
 
-########################################################
-# 6. Vérification et correction des permissions SYSVOL
-########################################################
-log "🔍 Vérification et correction des permissions SYSVOL..."
-samba-tool ntacl sysvolreset | tee -a "$LOG_FILE"
+log "🔍 Correction des permissions SYSVOL..."
+samba-tool ntacl sysvolreset >> "$LOG_FILE" 2>&1
 chown -R root:"Domain Admins" /var/lib/samba/sysvol
 chmod -R 770 /var/lib/samba/sysvol
 log "✅ Permissions SYSVOL mises à jour !"
 
 ########################################################
-# 7. Création, liaison et application des GPOs
+# 6. Création, liaison et application des GPOs
 ########################################################
 log "🚀 Application des GPOs..."
 
+# Tableau associatif avec GPOs et OU de destination
 declare -A GPO_LIST=(
     ["Disable_CMD"]="OU=Servers_T1,OU=NS,DC=northstar,DC=com"
     ["Force_SMB_Encryption"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
@@ -191,29 +196,30 @@ declare -A GPO_LIST=(
     ["Disable_Telemetry"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
     ["Block_USB_Access"]="OU=Servers_T1,OU=NS,DC=northstar,DC=com"
     ["Restrict_Control_Panel"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
+    ["NTP_Sync"]="OU=Computers,DC=northstar,DC=com"
+    ["Logon_Warning"]="OU=Computers,DC=northstar,DC=com"
 )
 
 for GPO_NAME in "${!GPO_LIST[@]}"; do
     OU_PATH="${GPO_LIST[$GPO_NAME]}"
-
-    # Vérification que l'utilisateur est défini
-    ADMIN_USER=$(grep '^username=' "$SMB_PASSWD_FILE" | awk -F '=' '{gsub(/^ +| +$/, "", $2); print $2}')
-    if [ -z "$ADMIN_USER" ]; then
-        log "❌ Erreur : Impossible de récupérer l'utilisateur depuis $SMB_PASSWD_FILE"
-        exit 1
-    fi
+    log "-------------------------------------"
+    log "Traitement de la GPO '$GPO_NAME' pour l'OU '$OU_PATH'..."
 
     # Vérifier si la GPO existe déjà
     EXISTING_GPO=$(samba-tool gpo list "$ADMIN_USER" --use-kerberos=required | grep -E "^$GPO_NAME\s")
     if [ -z "$EXISTING_GPO" ]; then
         log "📌 Création de la GPO '$GPO_NAME'..."
         samba-tool gpo create "$GPO_NAME" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
-        sleep 2  # Délai pour s'assurer de la création
+        sleep 2
     else
         log "✅ La GPO '$GPO_NAME' existe déjà."
     fi
 
-    # Extraction du GUID de la GPO de manière robuste
+    # Réinitialisation des permissions de la GPO pour utiliser les groupes de base
+    log "🔄 Réinitialisation des permissions de la GPO '$GPO_NAME'..."
+    samba-tool gpo resetperms "$GPO_NAME" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
+
+    # Extraction du GUID de la GPO
     GPO_GUID=$(samba-tool gpo listall --use-kerberos=required | awk -v gpo="$GPO_NAME" '
         /^GPO[ \t]+:/ { guid=$3 }
         /^display name[ \t]+:/ {
@@ -228,11 +234,11 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
         log "❌ Erreur : Impossible de récupérer le GUID pour la GPO '$GPO_NAME'."
         exit 1
     fi
+    log "🔍 GUID récupéré pour '$GPO_NAME' : {$GPO_GUID}"
 
     # Construction du dossier de la GPO
     GPO_FOLDER="/var/lib/samba/sysvol/$DOMAIN/Policies/{$GPO_GUID}"
-    log "🔗 Lien de la GPO '$GPO_NAME' (GUID: {$GPO_GUID}) à l'OU '$OU_PATH'..."
-    # Utilisation du GUID (avec accolades) pour la liaison
+    log "🔗 Liaison de la GPO '$GPO_NAME' à l'OU '$OU_PATH'..."
     samba-tool gpo setlink "$OU_PATH" "{$GPO_GUID}" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
     if [ "${PIPESTATUS[0]}" -ne 0 ]; then
         log "❌ Erreur : Impossible de lier la GPO '$GPO_NAME' à l'OU '$OU_PATH' !"
@@ -240,9 +246,8 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     fi
 
     ########################################################
-    # 7.1 Application des paramètres de la GPO à partir d'un template
+    # Application des paramètres de la GPO à partir d'un template
     ########################################################
-    # Si un fichier de template (.pol) existe pour ce GPO dans $TEMPLATE_DIR, on le copie dans le dossier Machine
     TEMPLATE_FILE="$TEMPLATE_DIR/${GPO_NAME}.pol"
     if [ -f "$TEMPLATE_FILE" ]; then
         mkdir -p "$GPO_FOLDER/Machine"
@@ -254,7 +259,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
 done
 
 ########################################################
-# 8. Fin de la configuration
+# 7. Fin de la configuration
 ########################################################
 log "==============================="
 log "✅ Configuration complète des GPOs !"
