@@ -43,6 +43,9 @@ cat <<EOF > "$CHRONY_CONF"
 server 0.pool.ntp.org iburst
 server 1.pool.ntp.org iburst
 server 2.pool.ntp.org iburst
+server ntp.univ-lyon1.fr iburst
+server ntp.laas.fr iburst
+
 
 # Autoriser les clients internes à interroger le serveur
 allow $NTP_SUBNET
