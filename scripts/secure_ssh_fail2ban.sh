@@ -61,8 +61,8 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - 🔍 Vérification et installation de Fail2
 apt update && apt install -y fail2ban
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 🧹 Nettoyage et correction des permissions Fail2Ban..." | tee -a "$LOG_FILE"
-rm -f $FAIL2BAN_DIR/jail.d/*.conf
-rm -f $FAIL2BAN_DIR/filter.d/*.conf
+rm -f $FAIL2BAN_DIR/jail.d/*.local
+rm -f $FAIL2BAN_DIR/filter.d/*.local
 
 # ========================
 # 🔧 Configuration de Fail2Ban pour SSH
