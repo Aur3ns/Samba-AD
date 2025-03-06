@@ -122,6 +122,9 @@ else
     exit 1
 fi
 
+#Symlink de /var/lib/samba/private/krb5.conf vers /etc/krb5.conf
+ln -sf /var/lib/samba/private/krb5.conf /etc/krb5.conf
+
 # Test de connexion Kerberos avec `Administrator`
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Test de connexion Kerberos avec Administrator..." | tee -a "$LOG_FILE"
 echo "$SAMBA_ADMIN_PASS" | kinit Administrator
