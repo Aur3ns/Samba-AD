@@ -74,8 +74,8 @@ fi
 
 # 5. Redémarrage de Chrony
 log "🔄 Redémarrage du service Chrony..."
-systemctl restart chronyd
-systemctl enable chronyd
+systemctl restart chrony
+systemctl enable chrony
 
 # 6. Vérification de l'état
 log "🔍 Vérification des sources NTP..."
