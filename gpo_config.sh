@@ -108,9 +108,10 @@ fi
 
 ########################################################
 # 3. Application des BONNES permissions sur le SYSVOL ou les GPOS seront stockées
+samba-tool ntacl sysvolreset
 chown -R root:root /var/lib/samba/sysvol
 chmod -R 755 /var/lib/samba/sysvol
-samba-tool ntacl sysvolreset
+systemctl restart samba-ad-dc
 ########################################################
 
 ########################################################
