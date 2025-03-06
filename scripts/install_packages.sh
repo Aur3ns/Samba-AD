@@ -6,10 +6,10 @@ rm -f "$LOG_FILE"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Démarrage de l'installation des paquets" | tee -a "$LOG_FILE"
 
 apt update && apt upgrade -y | tee -a "$LOG_FILE"
-apt install -y samba-ad-dc krb5-user smbclient winbind auditd ldb-tools lynis audispd-plugins fail2ban sudo dnsutils openssh-server chronyd | tee -a "$LOG_FILE"
+apt install -y samba-ad-dc krb5-user smbclient winbind auditd ldb-tools lynis audispd-plugins fail2ban sudo dnsutils openssh-server chrony | tee -a "$LOG_FILE"
 
 # Vérification des paquets installés
-for pkg in samba-ad-dc krb5-user smbclient winbind auditd lynis audispd-plugins fail2ban sudo ufw dnsutils openssh-server; do
+for pkg in samba-ad-dc krb5-user smbclient winbind auditd ldb-tools lynis audispd-plugins fail2ban sudo dnsutils openssh-server chrony; do
     if ! dpkg -l | grep -qw "$pkg"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Erreur : Le paquet $pkg n'a pas été installé !" | tee -a "$LOG_FILE"
         exit 1
