@@ -3,8 +3,17 @@ from samba.samdb import SamDB
 from samba import credentials
 from samba.param import LoadParm
 
+# --- Connexion au domaine Samba AD ---
 def detect_domain_settings(admin_user, admin_password):
-    """Connexion au domaine Samba AD avec authentification."""
+    """
+    Connexion au domaine Samba AD avec authentification.
+    
+    Renvoie un dictionnaire contenant :
+      - samdb : l'instance SamDB
+      - domain_dn : le DN du domaine
+      - domain_name : le nom du domaine (extrait du DC)
+      - user : le nom d'utilisateur administrateur
+    """
     lp = LoadParm()
     creds = credentials.Credentials()
     try:
@@ -12,12 +21,15 @@ def detect_domain_settings(admin_user, admin_password):
         creds.set_password(admin_password)
         creds.guess(lp)
         samdb = SamDB(url="ldap://localhost", credentials=creds, lp=lp)
+        # Récupération du contexte par défaut
         domain_dn = samdb.search(base="", scope=0, attrs=["defaultNamingContext"])[0]["defaultNamingContext"][0]
+        # Récupération du nom de domaine via l'attribut "dc"
         domain_name = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])[0]["dc"][0]
         return {"samdb": samdb, "domain_dn": domain_dn, "domain_name": domain_name, "user": admin_user}
     except Exception as e:
         return f"[ERROR] Connexion échouée : {e}"
 
+# --- Fonctions de gestion des Organizational Units (OUs) ---
 def list_ous(samdb, domain_dn):
     ous = samdb.search(base=domain_dn, expression="(objectClass=organizationalUnit)", attrs=["ou", "dn"])
     return [ou["ou"][0].decode('utf-8') if isinstance(ou["ou"][0], bytes) else ou["ou"][0] for ou in ous] if ous else []
@@ -38,6 +50,7 @@ def delete_ou(samdb, domain_dn, ou_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer l'OU : {e}"
 
+# --- Fonctions de gestion des Groupes ---
 def list_groups(samdb, domain_dn):
     try:
         base = f"CN=Users,{domain_dn}"
@@ -62,6 +75,7 @@ def delete_group(samdb, domain_dn, group_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer le groupe : {e}"
 
+# --- Fonctions de gestion des GPOs ---
 def list_gpos(samdb, domain_dn):
     gpo_base = f"CN=Policies,CN=System,{domain_dn}"
     gpos = samdb.search(base=gpo_base, expression="(objectClass=groupPolicyContainer)", attrs=["displayName"])
@@ -89,9 +103,11 @@ def delete_gpo(samdb, domain_dn, gpo_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer le GPO : {e}"
 
+# --- Fonctions de gestion des Utilisateurs ---
 def list_users(samdb, domain_dn):
     users = samdb.search(base=domain_dn, expression="(objectClass=user)", attrs=["sAMAccountName"])
-    return [user["sAMAccountName"][0].decode('utf-8') if isinstance(user["sAMAccountName"][0], bytes) else user["sAMAccountName"][0] 
+    return [user["sAMAccountName"][0].decode('utf-8') if isinstance(user["sAMAccountName"][0], bytes)
+            else user["sAMAccountName"][0]
             for user in users if user["sAMAccountName"][0].lower() != b"krbtgt"] if users else []
 
 def create_user(samdb, domain_dn, user_name, password):
@@ -116,10 +132,12 @@ def delete_user(samdb, domain_dn, user_name):
     except Exception as e:
         return f"[ERROR] Impossible de supprimer l'utilisateur : {e}"
 
+# --- Fonctions de gestion des Ordinateurs ---
 def list_computers(samdb, domain_dn):
     try:
         computers = samdb.search(base=domain_dn, expression="(objectClass=computer)", attrs=["cn"])
-        return [comp["cn"][0].decode('utf-8') if isinstance(comp["cn"][0], bytes) else comp["cn"][0] for comp in computers] if computers else []
+        return [comp["cn"][0].decode('utf-8') if isinstance(comp["cn"][0], bytes)
+                else comp["cn"][0] for comp in computers] if computers else []
     except Exception as e:
         return f"[ERROR] {e}"
 
@@ -153,8 +171,68 @@ def move_computer(samdb, domain_dn, computer_name, target_ou):
     except Exception as e:
         return f"[ERROR] Impossible de déplacer l'ordinateur : {e}"
 
+# --- Fonctions avancées génériques ---
+
+def modify_object(samdb, dn, modifications):
+    """
+    Modifie un objet en remplaçant ses attributs.
+    'modifications' est un dictionnaire où chaque clé est le nom d'un attribut et
+    chaque valeur est une liste des nouvelles valeurs.
+    Exemple : {"description": ["Nouvelle description"]}
+    """
+    try:
+        samdb.modify(dn, modifications)
+        return f"[OK] Objet {dn} modifié."
+    except Exception as e:
+        return f"[ERROR] Modification de l'objet {dn} a échoué : {e}"
+
+def get_object_attributes(samdb, dn):
+    """
+    Récupère l'ensemble des attributs de l'objet identifié par 'dn'.
+    """
+    try:
+        result = samdb.search(base=dn, scope=0, attrs=["*"])
+        return result[0] if result else None
+    except Exception as e:
+        return f"[ERROR] Impossible d'obtenir les attributs de l'objet {dn} : {e}"
+
+def search_objects(samdb, base, filter_expr, attrs=None):
+    """
+    Effectue une recherche dans l'annuaire à partir d'un base DN, d'une expression filtre,
+    et d'une liste d'attributs à récupérer (ou tous si None).
+    """
+    try:
+        results = samdb.search(base=base, expression=filter_expr, attrs=attrs)
+        return results
+    except Exception as e:
+        return f"[ERROR] Recherche échouée : {e}"
+
+def move_object(samdb, current_dn, new_dn):
+    """
+    Déplace (ou renomme) un objet de 'current_dn' vers 'new_dn'.
+    """
+    try:
+        samdb.rename(current_dn, new_dn)
+        return f"[OK] Objet déplacé de {current_dn} vers {new_dn}."
+    except Exception as e:
+        return f"[ERROR] Échec du déplacement de l'objet : {e}"
+
+def rename_object(samdb, old_dn, new_rdn):
+    """
+    Renomme un objet en changeant son RDN.
+    Par exemple, pour renommer un utilisateur, 'new_rdn' pourra être "CN=nouveau_nom".
+    """
+    try:
+        samdb.rename(old_dn, new_rdn)
+        return f"[OK] Objet renommé en {new_rdn}."
+    except Exception as e:
+        return f"[ERROR] Échec du renommage de l'objet : {e}"
+
+# --- Fonction de rafraîchissement des données pour l'interface ---
 def refresh_data(domain_info):
-    """Rafraîchit et retourne les données pour chaque onglet."""
+    """
+    Rafraîchit et retourne les données pour chaque onglet (OUs, Groupes, GPOs, Utilisateurs, Ordinateurs).
+    """
     data = {}
     data['ous'] = list_ous(domain_info["samdb"], domain_info["domain_dn"])
     data['groupes'] = list_groups(domain_info["samdb"], domain_info["domain_dn"])

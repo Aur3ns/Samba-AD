@@ -1,5 +1,6 @@
 import curses
 import getpass
+import time
 from samba_ad import (
     detect_domain_settings,
     create_ou, delete_ou,
@@ -10,6 +11,110 @@ from samba_ad import (
     refresh_data
 )
 
+# --- Initialisation des couleurs ---
+def init_colors():
+    if curses.has_colors():
+        curses.start_color()
+        curses.use_default_colors()
+        # Définition de quelques paires de couleurs
+        curses.init_pair(1, curses.COLOR_CYAN, -1)      # Pour le header
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Pour l'onglet actif
+        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)   # Pour la sidebar (élément sélectionné)
+        curses.init_pair(4, curses.COLOR_YELLOW, -1)     # Pour la barre de statut
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)    # Pour les séparateurs
+
+# --- Fonction pour obtenir le spinner animé ---
+def get_spinner():
+    spinner_frames = ["|", "/", "-", "\\"]
+    return spinner_frames[int(time.time() * 4) % len(spinner_frames)]
+
+# --- Animation d'introduction ---
+def animate_intro(stdscr):
+    # Définir quelques cadres d'animation (vous pouvez personnaliser ces images)
+    frames = [
+        r"""
+  ____                   _             
+ / ___| _ __   __ _  ___| | ____ _  
+ \___ \| '_ \ / _` |/ __| |/ / _` | 
+  ___) | |_) | (_| | (__|   < (_| | 
+ |____/| .__/ \__,_|\___|_|\_\__,_| 
+       |_|                         
+        """,
+        r"""
+  ____                   _             
+ / ___| _ __   __ _  ___| | ____ _  
+ \___ \| '_ \ / _` |/ __| |/ / _` | 
+  ___) | |_) | (_| | (__|   < (_| | 
+ |____/| .__/ \__,_|\___|_|\_\__,_| 
+       |_|         ~~~            
+        """,
+        r"""
+  ____                   _             
+ / ___| _ __   __ _  ___| | ____ _  
+ \___ \| '_ \ / _` |/ __| |/ / _` | 
+  ___) | |_) | (_| | (__|   < (_| | 
+ |____/| .__/ \__,_|\___|_|\_\__,_| 
+       |_|   * Bienvenue *        
+        """
+    ]
+    max_y, max_x = stdscr.getmaxyx()
+    for frame in frames:
+        stdscr.erase()
+        lines = frame.strip("\n").splitlines()
+        start_y = max((max_y - len(lines)) // 2, 0)
+        for i, line in enumerate(lines):
+            stdscr.addstr(start_y + i, max((max_x - len(line)) // 2, 0), line, curses.A_BOLD)
+        stdscr.refresh()
+        curses.napms(700)  # pause de 700 millisecondes entre les cadres
+    stdscr.erase()
+    stdscr.refresh()
+
+# --- Header avec ASCII art et spinner ---
+def draw_ascii_header(win, domain_info):
+    win.clear()
+    ascii_art = [
+        "  ____                   _             _     _    ",
+        " / ___| _ __   __ _  ___| | ____ _  __| | __| |   ",
+        " \\___ \\| '_ \\ / _` |/ __| |/ / _` |/ _` |/ _` |   ",
+        "  ___) | |_) | (_| | (__|   < (_| | (_| | (_| |   ",
+        " |____/| .__/ \\__,_|\\___|_|\\_\\__,_|\\__,_|\\__,_|   "
+    ]
+    max_y, max_x = win.getmaxyx()
+    start_y = 1
+    for i, line in enumerate(ascii_art):
+        win.addstr(start_y + i, max((max_x - len(line)) // 2, 0), line, curses.color_pair(1) | curses.A_BOLD)
+    # Affichage d'une info au centre
+    info_str = f"Domaine : {domain_info['domain_name']}    Utilisateur : {domain_info['user']}"
+    win.addstr(start_y + len(ascii_art) + 1, max((max_x - len(info_str)) // 2, 0), info_str, curses.A_BOLD)
+    # Affichage du spinner en haut à droite
+    spinner = get_spinner()
+    win.addstr(0, max_x - 3, spinner, curses.color_pair(1) | curses.A_BOLD)
+    win.hline(start_y + len(ascii_art) + 2, 0, curses.ACS_HLINE, max_x)
+    win.refresh()
+
+# --- Barre d'onglets améliorée ---
+def draw_tab_bar(win, current_tab, tabs):
+    win.clear()
+    max_y, max_x = win.getmaxyx()
+    x = 2
+    for idx, tab in enumerate(tabs):
+        if idx == current_tab:
+            win.addstr(0, x, f" {tab} ", curses.color_pair(2) | curses.A_BOLD)
+        else:
+            win.addstr(0, x, f" {tab} ")
+        x += len(tab) + 3
+    win.hline(1, 0, curses.ACS_HLINE, max_x)
+    win.refresh()
+
+# --- Barre de statut améliorée ---
+def draw_status_bar(win, message):
+    win.clear()
+    max_y, max_x = win.getmaxyx()
+    status = message if message else "F1: Aide | F5: Actualiser | /: Filtrer | c: Créer | d: Supprimer | ←/→: Onglets | ↑/↓: Navigation | ESC: Quitter"
+    win.addstr(0, 0, status[:max_x-1], curses.color_pair(4))
+    win.refresh()
+
+# --- Gestion des éléments pour chaque onglet ---
 def get_items_for_tab(current_tab, data):
     if current_tab == 0:  # Dashboard
         return list(data['dashboard'].items())
@@ -25,36 +130,7 @@ def get_items_for_tab(current_tab, data):
         return data['computers']
     return []
 
-def draw_header(win, domain_info):
-    win.clear()
-    title = "Samba AD Management"
-    domain_str = f"Domaine : {domain_info['domain_name']}"
-    user_str = f"Utilisateur : {domain_info['user']}"
-    win.addstr(0, 2, title, curses.A_BOLD)
-    win.addstr(1, 2, domain_str)
-    win.addstr(1, max(40, len(domain_str)+5), user_str)
-    win.hline(2, 0, curses.ACS_HLINE, win.getmaxyx()[1])
-    win.refresh()
-
-def draw_tab_bar(win, current_tab, tabs):
-    win.clear()
-    x = 2
-    for idx, tab in enumerate(tabs):
-        if idx == current_tab:
-            win.addstr(0, x, f"[{tab}]", curses.A_REVERSE)
-        else:
-            win.addstr(0, x, f" {tab} ")
-        x += len(tab) + 3
-    win.hline(1, 0, curses.ACS_HLINE, win.getmaxyx()[1])
-    win.refresh()
-
-def draw_status_bar(win, message):
-    win.clear()
-    max_y, max_x = win.getmaxyx()
-    status = message if message else "F1: Aide | F5: Actualiser | /: Filtrer | c: Créer | d: Supprimer | ESC: Quitter"
-    win.addstr(0, 0, status[:max_x-1])
-    win.refresh()
-
+# --- Sidebar avec bordure et sélection colorée ---
 def draw_sidebar(win, current_tab, data, selected_index, filter_str):
     win.clear()
     items = get_items_for_tab(current_tab, data)
@@ -63,12 +139,13 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
     for idx, item in enumerate(items):
         display_text = f"{item}" if current_tab != 0 else f"{item[0]}: {item[1]}"
         if idx == selected_index:
-            win.addstr(idx+1, 1, display_text, curses.A_REVERSE)
+            win.addstr(idx+1, 1, display_text, curses.color_pair(3))
         else:
             win.addstr(idx+1, 1, display_text)
     win.box()
     win.refresh()
 
+# --- Panneau de contenu amélioré ---
 def draw_content(win, current_tab, data, selected_index, filter_str):
     win.clear()
     items = get_items_for_tab(current_tab, data)
@@ -106,7 +183,8 @@ def show_help(stdscr):
         "/  : Filtrer la liste",
         "c  : Créer un nouvel objet",
         "d  : Supprimer l'objet sélectionné",
-        "Flèches : Navigation",
+        "←/→ : Changer d'onglet",
+        "↑/↓ : Navigation",
         "ESC : Quitter l'application",
         "",
         "Appuyez sur une touche pour revenir."
@@ -206,6 +284,8 @@ def handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
     return "Opération annulée."
 
 def main_tui(stdscr, domain_info):
+    init_colors()
+    animate_intro(stdscr)
     curses.curs_set(0)
     stdscr.nodelay(False)
     stdscr.timeout(100)
@@ -216,28 +296,33 @@ def main_tui(stdscr, domain_info):
     notification = ""
     data = refresh_data(domain_info)
 
+    max_y, max_x = stdscr.getmaxyx()
+
+    # Définition des zones
+    header_height = 9  # pour l'ASCII art + info
+    tab_height = 3
+    status_height = 1
+    content_height = max_y - header_height - tab_height - status_height
+    sidebar_width = max_x // 3
+    content_width = max_x - sidebar_width
+
+    header_win = stdscr.subwin(header_height, max_x, 0, 0)
+    tab_win = stdscr.subwin(tab_height, max_x, header_height, 0)
+    main_win = stdscr.subwin(content_height, max_x, header_height + tab_height, 0)
+    status_win = stdscr.subwin(status_height, max_x, max_y - status_height, 0)
+
+    # Découpage du main_win en sidebar et content
+    sidebar_win = main_win.derwin(content_height, sidebar_width, 0, 0)
+    content_win = main_win.derwin(content_height, content_width, 0, sidebar_width)
+
     while True:
-        stdscr.clear()
-        max_y, max_x = stdscr.getmaxyx()
-
-        # Définition des zones
-        header_win = stdscr.subwin(3, max_x, 0, 0)
-        tab_win = stdscr.subwin(2, max_x, 3, 0)
-        content_height = max_y - 6 - 1
-        content_win = stdscr.subwin(content_height, max_x, 5, 0)
-        status_win = stdscr.subwin(1, max_x, max_y - 1, 0)
-
-        # Délimitation de la zone du contenu (split screen)
-        left_width = max_x // 3
-        right_width = max_x - left_width
-        sidebar_win = content_win.derwin(content_height, left_width, 0, 0)
-        content_panel_win = content_win.derwin(content_height, right_width, 0, left_width)
+        stdscr.erase()
 
         # Dessin des différentes zones
-        draw_header(header_win, domain_info)
+        draw_ascii_header(header_win, domain_info)
         draw_tab_bar(tab_win, current_tab, tabs)
         draw_sidebar(sidebar_win, current_tab, data, selected_index, filter_str)
-        draw_content(content_panel_win, current_tab, data, selected_index, filter_str)
+        draw_content(content_win, current_tab, data, selected_index, filter_str)
         draw_status_bar(status_win, notification)
 
         stdscr.refresh()
@@ -277,7 +362,7 @@ def main_tui(stdscr, domain_info):
         elif key == 27:  # ESC
             break
 
-    stdscr.clear()
+    stdscr.erase()
     stdscr.refresh()
 
 if __name__ == "__main__":
