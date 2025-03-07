@@ -39,7 +39,6 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - OU NS créée avec succès." | tee -a "$LOG
 
 # Définition d'un tableau des autres OU à recréer
 OU_LIST=(
-    "OU=Servers_T1,OU=NS,DC=northstar,DC=com"
     "OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
     "OU=Group_ADMT0,OU=NS,DC=northstar,DC=com"
     "OU=Group_ADMT1,OU=NS,DC=northstar,DC=com"
