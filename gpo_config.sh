@@ -172,23 +172,7 @@ chmod -R 770 "$SYSVOL_DIR"
 log "✅ Permissions SYSVOL mises à jour !"
 
 ########################################################
-# 6. Suppression des GPO existantes (hors celles par défaut)
-########################################################
-log "🔄 Vérification des GPO existantes (hors GPO par défaut)..."
-EXISTING_GPOS=$(samba-tool gpo list --use-kerberos=required | grep -v -E 'Default Domain Policy|Default Domain Controllers Policy')
-if [ -n "$EXISTING_GPOS" ]; then
-    echo "$EXISTING_GPOS" | while IFS= read -r line; do
-        GPO_NAME_EXIST=$(echo "$line" | awk -F'  +' '{print $1}')
-        log "🗑️ Suppression de la GPO existante : $GPO_NAME_EXIST"
-        samba-tool gpo delete "$GPO_NAME_EXIST" --use-kerberos=required >> "$LOG_FILE" 2>&1
-    done
-    log "✅ Suppression des GPO existantes (hors GPO par défaut) terminée."
-else
-    log "✅ Aucune GPO existante à supprimer."
-fi
-
-########################################################
-# 7. Création, liaison et application des GPOs
+# 6. Création, liaison et application des GPOs
 ########################################################
 log "🚀 Création et liaison des nouvelles GPOs..."
 
@@ -259,7 +243,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
 done
 
 ########################################################
-# 8. Fin de la configuration
+# 7. Fin de la configuration
 ########################################################
 log "==============================="
 log "✅ Configuration complète des GPOs !"
