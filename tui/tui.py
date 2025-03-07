@@ -1,6 +1,6 @@
 import curses
 import getpass
-from samba import (
+from samba_ad import (
     detect_domain_settings,
     create_ou, delete_ou,
     list_ous, list_groups, create_group, delete_group,
