@@ -80,7 +80,7 @@ cat <<EOF > /etc/fail2ban/jail.d/sshd.conf
 enabled = true
 port = ssh
 filter = sshd
-logpath = %(journal)s
+logpath = /var/log/auth.log
 maxretry = 3
 bantime = 10m
 EOF
