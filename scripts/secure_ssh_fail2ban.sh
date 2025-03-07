@@ -65,10 +65,16 @@ rm -f $FAIL2BAN_DIR/jail.d/*.local
 rm -f $FAIL2BAN_DIR/filter.d/*.local
 
 # ========================
+# ⚙️ Configuration globale Fail2Ban pour utiliser systemd
+# ========================
+cat <<EOF > /etc/fail2ban/jail.local
+[DEFAULT]
+backend = systemd
+EOF
+
+# ========================
 # 🔧 Configuration de Fail2Ban pour SSH
 # ========================
-echo "$(date '+%Y-%m-%d %H:%M:%S') - ⚙️ Configuration de Fail2Ban pour SSH et Samba..." | tee -a "$LOG_FILE"
-
 cat <<EOF > /etc/fail2ban/jail.d/sshd.conf
 [sshd]
 enabled = true
@@ -96,6 +102,22 @@ EOF
 cat <<EOF > /etc/fail2ban/filter.d/samba.conf
 [Definition]
 failregex = .*smbd.*NT_STATUS_LOGON_FAILURE.* from <HOST>
+ignoreregex =
+EOF
+
+# ========================
+# 🔧 Création du filtre SSH pour Fail2Ban
+# ========================
+cat <<EOF > /etc/fail2ban/filter.d/sshd.conf
+[INCLUDES]
+before = common.conf
+
+[Definition]
+_daemon = sshd
+
+failregex = ^%(__prefix_line)s(?:error: PAM: )?Authentication failure for .* from <HOST>(?: port \d*)?$
+            ^%(__prefix_line)sFailed \S+ for .* from <HOST>(?: port \d*)?(?: ssh\d*)?$
+            ^%(__prefix_line)sROOT LOGIN REFUSED .* FROM <HOST>$
 ignoreregex =
 EOF
 
