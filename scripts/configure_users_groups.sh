@@ -18,7 +18,7 @@ echo "====================" | tee -a "$LOG_FILE"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Recherche et suppression automatique des OU existantes (sauf l'OU principale NS)..." | tee -a "$LOG_FILE"
 
 # La commande "samba-tool ou list" doit retourner une ligne par OU
-samba-tool ou list | while read -r OU; do
+samba-tool ou list SRV-NS | while read -r OU; do
     # Exclure l'OU principale NS
     if [[ "$OU" != "OU=NS,DC=northstar,DC=com" ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression de l'OU : $OU" | tee -a "$LOG_FILE"
