@@ -1,6 +1,7 @@
 import curses
 import getpass
 import time
+import textwrap  # <-- pour gérer le wrapping du texte
 from samba_ad import (
     detect_domain_settings,
     create_ou, delete_ou,
@@ -22,7 +23,7 @@ def init_colors():
         curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Pour l'onglet actif
         curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)   # Pour la sidebar (élément sélectionné)
         curses.init_pair(4, curses.COLOR_YELLOW, -1)     # Pour la barre de statut
-        curses.init_pair(5, curses.COLOR_MAGENTA, -1)    # Pour les séparateurs
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)    # Pour d'autres séparateurs/éléments si besoin
 
 # --- Spinner animé dans le header ---
 def get_spinner():
@@ -157,44 +158,99 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
     win.box()
     win.refresh()
 
-# --- Panneau de contenu amélioré ---
+# --- Panneau de contenu avec wrapping vertical ---
 def draw_content(win, current_tab, data, selected_index, filter_str):
+    """
+    Affiche le contenu dans la zone de droite, avec retour à la ligne (wrapping)
+    pour éviter que le texte ne dépasse horizontalement.
+    """
     win.clear()
+    height, width = win.getmaxyx()
     items = get_items_for_tab(current_tab, data)
     if filter_str:
         items = [item for item in items if filter_str.lower() in str(item).lower()]
+
+    # Construction du texte à afficher
     if items:
         selected_item = items[selected_index]
         if current_tab == 0:
+            # Dashboard: ex: [("OUs", 7), ("Groupes", 3), ...]
             details = f"{selected_item[0]} : {selected_item[1]}"
         elif current_tab == 6 and isinstance(selected_item, dict):
-            # Affichage formaté pour un résultat de recherche
-            details = "\n".join(f"{k}: {v}" for k, v in selected_item.items())
+            # Recherche: on affiche tous les attributs
+            # ex: { "dn": "...", "objectClass": [...], ... }
+            # On formate en lignes "attribut: valeur"
+            lines = []
+            for k, v in selected_item.items():
+                # Convertir en string propre
+                lines.append(f"{k}: {v}")
+            details = "\n".join(lines)
         else:
             details = f"Nom : {selected_item}"
-        win.addstr(1, 2, details)
     else:
-        win.addstr(1, 2, "Aucun élément")
+        details = "Aucun élément"
+
+    # On wrap le texte pour qu'il ne dépasse pas la largeur
+    wrapped_lines = []
+    for line in details.splitlines():
+        # On coupe chaque ligne en segments <= (width - 4) pour éviter l'overflow
+        sub_lines = textwrap.wrap(line, width=width - 4)
+        if not sub_lines:
+            # ligne vide
+            wrapped_lines.append("")
+        else:
+            wrapped_lines.extend(sub_lines)
+
+    # Affichage dans la zone
+    # On affiche en commençant à la ligne 1, avec une marge de 2 colonnes
+    row = 1
+    for wline in wrapped_lines:
+        if row >= height - 1:
+            # Si on dépasse la zone, on arrête (ou on pourrait scroller)
+            break
+        win.addstr(row, 2, wline)
+        row += 1
+
     win.box()
     win.refresh()
 
-# --- Affichage d'une fenêtre modale texte (lecture seule) ---
+# --- Affichage d'une fenêtre modale texte avec wrapping ---
 def display_modal_text(stdscr, title, text):
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
-    lines = text.splitlines()
+    # On va créer une fenêtre modale
+    # On sépare le texte en lignes et on wrap
+    lines = []
+    for line in text.splitlines():
+        # On coupe en segments <= 70 chars par exemple
+        sub_lines = textwrap.wrap(line, width=70)
+        if not sub_lines:
+            lines.append("")
+        else:
+            lines.extend(sub_lines)
+
     height = len(lines) + 4
-    width = max(max((len(line) for line in lines), default=0), len(title)) + 4
-    win = curses.newwin(height, width, max((max_y-height)//2, 0), max((max_x-width)//2, 0))
+    width = min(80, max((len(l) for l in lines), default=0) + 4)
+    # On centre la fenêtre
+    start_y = max((max_y - height)//2, 0)
+    start_x = max((max_x - width)//2, 0)
+
+    win = curses.newwin(height, width, start_y, start_x)
     win.box()
     win.addstr(0, 2, title, curses.A_BOLD)
-    for i, line in enumerate(lines):
-        win.addstr(i+2, 2, line)
+
+    # Affichage des lignes wrappées
+    row = 2
+    for line in lines:
+        if row >= height - 1:
+            break
+        win.addstr(row, 2, line)
+        row += 1
+
     win.refresh()
     win.getch()
     curses.noecho()
 
-# --- Fonctions modales pour saisie ---
 def modal_input(stdscr, title, prompt):
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
@@ -237,7 +293,6 @@ def modal_confirm(stdscr, prompt):
     curses.noecho()
     return (chr(ch).lower() == 'y')
 
-# --- Fonction utilitaire pour déduire le DN de l'objet sélectionné ---
 def get_dn_for_selected(current_tab, selected_item, domain_info):
     dn = None
     if current_tab == 1:
@@ -254,7 +309,6 @@ def get_dn_for_selected(current_tab, selected_item, domain_info):
         dn = selected_item.get("dn", str(selected_item))
     return dn
 
-# --- Gestion des actions avancées ---
 def handle_create_action(stdscr, current_tab, domain_info):
     if current_tab == 1:
         name = modal_input(stdscr, "Création d'OU", "Nom de la nouvelle OU: ")
@@ -300,26 +354,23 @@ def handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
             return delete_computer(domain_info["samdb"], domain_info["domain_dn"], selected_item)
     return "Opération annulée."
 
-# --- Boucle principale du TUI ---
 def main_tui(stdscr, domain_info):
     init_colors()
     animate_intro(stdscr)
     curses.curs_set(0)
     stdscr.nodelay(False)
     stdscr.timeout(100)
-    # Onglets : ajout de l'onglet Recherche (index 6)
     tabs = ["Dashboard", "OUs", "Groupes", "GPOs", "Utilisateurs", "Ordinateurs", "Recherche"]
     current_tab = 0
     selected_index = 0
     filter_str = ""
     notification = ""
     data = refresh_data(domain_info)
-    # Initialisation pour l'onglet Recherche
     data['recherche'] = []
 
     max_y, max_x = stdscr.getmaxyx()
 
-    header_height = 9    # pour l'ASCII art + info
+    header_height = 9
     tab_height = 3
     status_height = 1
     content_height = max_y - header_height - tab_height - status_height
@@ -367,58 +418,64 @@ def main_tui(stdscr, domain_info):
         elif key == ord('c'):
             notification = handle_create_action(stdscr, current_tab, domain_info)
             data = refresh_data(domain_info)
+            data['recherche'] = []  # Réinitialiser la recherche si besoin
             selected_index = 0
         elif key == ord('d'):
             notification = handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
             data = refresh_data(domain_info)
+            data['recherche'] = []
             selected_index = 0
         elif key == curses.KEY_F5:
             data = refresh_data(domain_info)
+            data['recherche'] = []
             notification = "Données actualisées."
         elif key == curses.KEY_F1:
             show_help(stdscr)
-        # Actions avancées :
         elif key == ord('a'):
             # Afficher les attributs de l'objet sélectionné
             items = get_items_for_tab(current_tab, data)
             if items:
                 selected_item = items[selected_index]
                 dn = get_dn_for_selected(current_tab, selected_item, domain_info)
-                attrs = get_object_attributes(domain_info["samdb"], dn)
-                if isinstance(attrs, dict):
-                    text = "\n".join(f"{k}: {v}" for k, v in attrs.items())
-                else:
-                    text = str(attrs)
-                display_modal_text(stdscr, "Attributs de l'objet", text)
+                if dn:
+                    attrs = get_object_attributes(domain_info["samdb"], dn)
+                    if isinstance(attrs, dict):
+                        text = "\n".join(f"{k}: {v}" for k, v in attrs.items())
+                    else:
+                        text = str(attrs)
+                    display_modal_text(stdscr, "Attributs de l'objet", text)
         elif key == ord('m'):
             # Modifier l'objet sélectionné
             items = get_items_for_tab(current_tab, data)
             if items:
                 selected_item = items[selected_index]
                 dn = get_dn_for_selected(current_tab, selected_item, domain_info)
-                mod_str = modal_input(stdscr, "Modification", "Entrez modifications (attr=val;...): ")
-                modifications = {}
-                for pair in mod_str.split(';'):
-                    if '=' in pair:
-                        attr, val = pair.split('=', 1)
-                        modifications[attr.strip()] = [val.strip()]
-                notification = modify_object(domain_info["samdb"], dn, modifications)
+                if dn:
+                    mod_str = modal_input(stdscr, "Modification", "Entrez modifications (attr=val;...): ")
+                    modifications = {}
+                    for pair in mod_str.split(';'):
+                        if '=' in pair:
+                            attr, val = pair.split('=', 1)
+                            modifications[attr.strip()] = [val.strip()]
+                    notification = modify_object(domain_info["samdb"], dn, modifications)
         elif key == ord('r'):
             # Renommer l'objet sélectionné
             items = get_items_for_tab(current_tab, data)
             if items:
                 selected_item = items[selected_index]
                 dn = get_dn_for_selected(current_tab, selected_item, domain_info)
-                new_rdn = modal_input(stdscr, "Renommer", "Entrez le nouveau RDN (ex: CN=nouveau_nom): ")
-                notification = rename_object(domain_info["samdb"], dn, new_rdn)
+                if dn:
+                    new_rdn = modal_input(stdscr, "Renommer", "Entrez le nouveau RDN (ex: CN=nouveau_nom): ")
+                    notification = rename_object(domain_info["samdb"], dn, new_rdn)
         elif key == ord('v'):
             # Déplacer l'objet sélectionné
             items = get_items_for_tab(current_tab, data)
             if items:
                 selected_item = items[selected_index]
                 dn = get_dn_for_selected(current_tab, selected_item, domain_info)
-                new_dn = modal_input(stdscr, "Déplacer", "Entrez le nouveau DN: ")
-                notification = move_object(domain_info["samdb"], dn, new_dn)
+                if dn:
+                    new_dn = modal_input(stdscr, "Déplacer", "Entrez le nouveau DN: ")
+                    notification = move_object(domain_info["samdb"], dn, new_dn)
         elif key == ord('S'):
             # Recherche avancée
             base_dn = modal_input(stdscr, "Recherche avancée", "Entrez la base DN (laisser vide = domaine par défaut): ")
