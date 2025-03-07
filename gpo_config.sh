@@ -184,20 +184,38 @@ chmod -R 770 /var/lib/samba/sysvol
 log "✅ Permissions SYSVOL mises à jour !"
 
 ########################################################
+# 5.5 Suppression des GPO existantes (sauf celles par défaut)
+########################################################
+log "🔄 Vérification des GPO existantes (hors GPO par défaut)..."
+# On liste toutes les GPO et on filtre pour exclure les GPO par défaut
+EXISTING_GPOS=$(samba-tool gpo list --use-kerberos=required | grep -v -E 'Default Domain Policy|Default Domain Controllers Policy')
+if [ -n "$EXISTING_GPOS" ]; then
+    echo "$EXISTING_GPOS" | while IFS= read -r line; do
+        # On récupère le nom de la GPO à partir de la première colonne (séparateur : espaces multiples)
+        GPO_NAME_EXIST=$(echo "$line" | awk -F'  +' '{print $1}')
+        log "🗑️ Suppression de la GPO existante : $GPO_NAME_EXIST"
+        samba-tool gpo delete "$GPO_NAME_EXIST" --use-kerberos=required >> "$LOG_FILE" 2>&1
+    done
+    log "✅ Toutes les GPO existantes (hors GPO par défaut) ont été supprimées."
+else
+    log "✅ Aucune GPO existante à supprimer."
+fi
+
+########################################################
 # 6. Création, liaison et application des GPOs
 ########################################################
 log "🚀 Application des GPOs..."
 
 # Tableau associatif avec GPOs et OU de destination
 declare -A GPO_LIST=(
-    ["Disable_CMD"]="OU=Servers_T1,OU=NS,DC=northstar,DC=com"
+    ["Disable_CMD"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
     ["Force_SMB_Encryption"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
-    ["Block_Temp_Executables"]="OU=Servers_T1,OU=NS,DC=northstar,DC=com"
+    ["Block_Temp_Executables"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
     ["Disable_Telemetry"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
-    ["Block_USB_Access"]="OU=Servers_T1,OU=NS,DC=northstar,DC=com"
+    ["Block_USB_Access"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
     ["Restrict_Control_Panel"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
-    ["NTP_Sync"]="OU=Computers,DC=northstar,DC=com"
-    ["Logon_Warning"]="OU=Computers,DC=northstar,DC=com"
+    ["NTP_Sync"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
+    ["Logon_Warning"]="OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
 )
 
 for GPO_NAME in "${!GPO_LIST[@]}"; do
@@ -205,11 +223,11 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     log "-------------------------------------"
     log "Traitement de la GPO '$GPO_NAME' pour l'OU '$OU_PATH'..."
 
-    # Vérifier si la GPO existe déjà
-    EXISTING_GPO=$(samba-tool gpo list "$ADMIN_USER" --use-kerberos=required | grep -E "^$GPO_NAME\s")
+    # Vérifier si la GPO existe déjà (bien que, grâce à la suppression précédente, elle ne devrait pas exister)
+    EXISTING_GPO=$(samba-tool gpo list --use-kerberos=required | grep -E "^$GPO_NAME\s")
     if [ -z "$EXISTING_GPO" ]; then
         log "📌 Création de la GPO '$GPO_NAME'..."
-        samba-tool gpo create "$GPO_NAME" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
+        samba-tool gpo create "$GPO_NAME" --use-kerberos=required >> "$LOG_FILE" 2>&1
         sleep 2
     else
         log "✅ La GPO '$GPO_NAME' existe déjà."
@@ -235,7 +253,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     # Construction du dossier de la GPO
     GPO_FOLDER="/var/lib/samba/sysvol/$DOMAIN/Policies/{$GPO_GUID}"
     log "🔗 Liaison de la GPO '$GPO_NAME' à l'OU '$OU_PATH'..."
-    samba-tool gpo setlink "$OU_PATH" "{$GPO_GUID}" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
+    samba-tool gpo setlink "$OU_PATH" "{$GPO_GUID}" --use-kerberos=required >> "$LOG_FILE" 2>&1
     if [ "${PIPESTATUS[0]}" -ne 0 ]; then
         log "❌ Erreur : Impossible de lier la GPO '$GPO_NAME' à l'OU '$OU_PATH' !"
         exit 1
