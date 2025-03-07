@@ -215,10 +215,6 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
         log "✅ La GPO '$GPO_NAME' existe déjà."
     fi
 
-    # Réinitialisation des permissions de la GPO pour utiliser les groupes de base
-    log "🔄 Réinitialisation des permissions de la GPO '$GPO_NAME'..."
-    samba-tool gpo resetperms "$GPO_NAME" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
-
     # Extraction du GUID de la GPO
     GPO_GUID=$(samba-tool gpo listall --use-kerberos=required | awk -v gpo="$GPO_NAME" '
         /^GPO[ \t]+:/ { guid=$3 }
