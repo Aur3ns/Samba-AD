@@ -1,7 +1,7 @@
 import curses
 import getpass
 import time
-import textwrap  # <-- pour gérer le wrapping du texte
+import textwrap
 from samba_ad import (
     detect_domain_settings,
     create_ou, delete_ou,
@@ -122,6 +122,9 @@ def draw_status_bar(win, message):
 
 # --- Gestion des éléments par onglet ---
 def get_items_for_tab(current_tab, data):
+    """
+    Retourne la liste d'éléments correspondant à l'onglet courant.
+    """
     if current_tab == 0:  # Dashboard
         return list(data['dashboard'].items())
     elif current_tab == 1:
@@ -141,12 +144,16 @@ def get_items_for_tab(current_tab, data):
 
 # --- Sidebar avec bordure et sélection colorée ---
 def draw_sidebar(win, current_tab, data, selected_index, filter_str):
+    """
+    Affiche la liste des éléments (ou DN pour la recherche) dans la sidebar,
+    avec une surbrillance pour l'élément sélectionné.
+    """
     win.clear()
     items = get_items_for_tab(current_tab, data)
     if filter_str:
         items = [item for item in items if filter_str.lower() in str(item).lower()]
     for idx, item in enumerate(items):
-        # Pour l'onglet Recherche, afficher le DN de l'objet
+        # Pour l'onglet Recherche, afficher le DN de l'objet si c'est un dict
         if current_tab == 6 and isinstance(item, dict) and "dn" in item:
             display_text = item["dn"]
         else:
@@ -177,12 +184,9 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
             # Dashboard: ex: [("OUs", 7), ("Groupes", 3), ...]
             details = f"{selected_item[0]} : {selected_item[1]}"
         elif current_tab == 6 and isinstance(selected_item, dict):
-            # Recherche: on affiche tous les attributs
-            # ex: { "dn": "...", "objectClass": [...], ... }
-            # On formate en lignes "attribut: valeur"
+            # Recherche: on affiche tous les attributs du résultat
             lines = []
             for k, v in selected_item.items():
-                # Convertir en string propre
                 lines.append(f"{k}: {v}")
             details = "\n".join(lines)
         else:
@@ -193,20 +197,17 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
     # On wrap le texte pour qu'il ne dépasse pas la largeur
     wrapped_lines = []
     for line in details.splitlines():
-        # On coupe chaque ligne en segments <= (width - 4) pour éviter l'overflow
         sub_lines = textwrap.wrap(line, width=width - 4)
         if not sub_lines:
-            # ligne vide
             wrapped_lines.append("")
         else:
             wrapped_lines.extend(sub_lines)
 
     # Affichage dans la zone
-    # On affiche en commençant à la ligne 1, avec une marge de 2 colonnes
     row = 1
     for wline in wrapped_lines:
         if row >= height - 1:
-            # Si on dépasse la zone, on arrête (ou on pourrait scroller)
+            # On s'arrête si on dépasse la hauteur de la zone
             break
         win.addstr(row, 2, wline)
         row += 1
@@ -214,53 +215,74 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
     win.box()
     win.refresh()
 
-# --- Affichage d'une fenêtre modale texte avec wrapping ---
+# --- Affichage d'une fenêtre modale texte, plus grande, avec scrolling vertical ---
 def display_modal_text(stdscr, title, text):
-    curses.echo()
+    """
+    Affiche le 'text' dans une fenêtre modale occupant ~80% de l'écran.
+    Permet de scroller verticalement si le texte est plus long que la fenêtre.
+    """
+    curses.noecho()
     max_y, max_x = stdscr.getmaxyx()
-    # On va créer une fenêtre modale
-    # On sépare le texte en lignes et on wrap
-    lines = []
+
+    # Dimensions de la fenêtre modale (80% de l'écran)
+    height = max_y * 8 // 10
+    width = max_x * 8 // 10
+    start_y = (max_y - height) // 2
+    start_x = (max_x - width) // 2
+
+    # On wrap le texte
+    wrapped_lines = []
     for line in text.splitlines():
-        # On coupe en segments <= 70 chars par exemple
-        sub_lines = textwrap.wrap(line, width=70)
+        sub_lines = textwrap.wrap(line, width=width - 4)
         if not sub_lines:
-            lines.append("")
+            wrapped_lines.append("")
         else:
-            lines.extend(sub_lines)
+            wrapped_lines.extend(sub_lines)
 
-    height = len(lines) + 4
-    width = min(80, max((len(l) for l in lines), default=0) + 4)
-    # On centre la fenêtre
-    start_y = max((max_y - height)//2, 0)
-    start_x = max((max_x - width)//2, 0)
-
+    # Fenêtre modale
     win = curses.newwin(height, width, start_y, start_x)
     win.box()
-    win.addstr(0, 2, title, curses.A_BOLD)
+    truncated_title = title[:width - 4]
+    win.addstr(0, 2, truncated_title, curses.A_BOLD)
 
-    # Affichage des lignes wrappées
-    row = 2
-    for line in lines:
-        if row >= height - 1:
+    # Variables de scroll
+    top_line = 0
+    visible_height = height - 2  # lignes visibles (hors bordure)
+    while True:
+        # Efface le contenu interne (en gardant la box)
+        for r in range(1, height - 1):
+            win.move(r, 1)
+            win.clrtoeol()
+
+        # Affiche le texte wrappé depuis top_line
+        row = 1
+        for i in range(top_line, min(top_line + visible_height, len(wrapped_lines))):
+            win.addstr(row, 2, wrapped_lines[i][:width - 4])
+            row += 1
+
+        win.box()
+        win.refresh()
+
+        ch = stdscr.getch()
+        if ch == curses.KEY_UP:
+            top_line = max(top_line - 1, 0)
+        elif ch == curses.KEY_DOWN:
+            if top_line + visible_height < len(wrapped_lines):
+                top_line += 1
+        elif ch == 27 or ch == ord('q') or ch == curses.KEY_EXIT:
+            # ESC ou 'q' pour fermer
             break
-        win.addstr(row, 2, line)
-        row += 1
-
-    win.refresh()
-    win.getch()
-    curses.noecho()
 
 def modal_input(stdscr, title, prompt):
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
-    width = max(len(prompt) + 20, 40)
+    width = max(len(prompt) + 20, 50)
     win = curses.newwin(5, width, max_y//2 - 2, (max_x - width)//2)
     win.box()
     win.addstr(0, 2, title, curses.A_BOLD)
     win.addstr(2, 2, prompt)
     win.refresh()
-    input_val = win.getstr(2, len(prompt) + 3, 50).decode('utf-8')
+    input_val = win.getstr(2, len(prompt) + 3, 100).decode('utf-8')
     curses.noecho()
     return input_val
 
@@ -268,7 +290,7 @@ def modal_input_multiple(stdscr, title, prompts):
     responses = {}
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
-    width = max(max((len(p) for p in prompts)) + 20, 50)
+    width = max(max((len(p) for p in prompts)) + 20, 60)
     height = len(prompts) + 4
     win = curses.newwin(height, width, max_y//2 - height//2, (max_x - width)//2)
     win.box()
@@ -276,7 +298,7 @@ def modal_input_multiple(stdscr, title, prompts):
     for idx, prompt in enumerate(prompts):
         win.addstr(idx+2, 2, prompt)
         win.refresh()
-        resp = win.getstr(idx+2, len(prompt) + 3, 50).decode('utf-8')
+        resp = win.getstr(idx+2, len(prompt) + 3, 100).decode('utf-8')
         responses[prompt] = resp
     curses.noecho()
     return responses
@@ -294,6 +316,10 @@ def modal_confirm(stdscr, prompt):
     return (chr(ch).lower() == 'y')
 
 def get_dn_for_selected(current_tab, selected_item, domain_info):
+    """
+    Construit le DN en fonction de l'onglet et de l'élément sélectionné.
+    Pour l'onglet Recherche (6), on récupère item["dn"] si c'est un dict.
+    """
     dn = None
     if current_tab == 1:
         dn = f"OU={selected_item},{domain_info['domain_dn']}"
@@ -306,6 +332,7 @@ def get_dn_for_selected(current_tab, selected_item, domain_info):
     elif current_tab == 5:
         dn = f"CN={selected_item},CN=Computers,{domain_info['domain_dn']}"
     elif current_tab == 6 and isinstance(selected_item, dict):
+        # Si la recherche renvoie un dict avec "dn"
         dn = selected_item.get("dn", str(selected_item))
     return dn
 
@@ -352,6 +379,17 @@ def handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
             return delete_user(domain_info["samdb"], domain_info["domain_dn"], selected_item)
         elif current_tab == 5:
             return delete_computer(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+        elif current_tab == 6:
+            # On tente de supprimer un objet trouvé via la recherche
+            dn = get_dn_for_selected(current_tab, selected_item, domain_info)
+            if dn:
+                # On peut tenter un samdb.delete(dn) directement,
+                # mais il faut être sûr que c'est un objet supprimable.
+                try:
+                    domain_info["samdb"].delete(dn)
+                    return f"[OK] Objet '{dn}' supprimé."
+                except Exception as e:
+                    return f"[ERROR] Impossible de supprimer '{dn}': {e}"
     return "Opération annulée."
 
 def main_tui(stdscr, domain_info):
@@ -413,7 +451,7 @@ def main_tui(stdscr, domain_info):
                 items = [item for item in items if filter_str.lower() in str(item).lower()]
             selected_index = min(selected_index + 1, len(items) - 1) if items else 0
         elif key == ord('/'):
-            filter_str = prompt_filter(stdscr)
+            filter_str = modal_input(stdscr, "Filtrer", "Entrez une chaîne à filtrer: ")
             selected_index = 0
         elif key == ord('c'):
             notification = handle_create_action(stdscr, current_tab, domain_info)
@@ -497,6 +535,37 @@ def main_tui(stdscr, domain_info):
 
     stdscr.erase()
     stdscr.refresh()
+
+# --- Aide rapide ---
+def show_help(stdscr):
+    max_y, max_x = stdscr.getmaxyx()
+    help_text = [
+        "Aide - Raccourcis clavier:",
+        "F1 : Afficher cette aide",
+        "F5 : Actualiser les données",
+        "/  : Filtrer la liste",
+        "c  : Créer un nouvel objet (selon l'onglet)",
+        "d  : Supprimer l'objet sélectionné",
+        "a  : Afficher tous les attributs de l'objet",
+        "m  : Modifier les attributs de l'objet (attr=val;...)",
+        "r  : Renommer l'objet (nouveau RDN)",
+        "v  : Déplacer l'objet (nouveau DN)",
+        "S  : Recherche avancée (base DN, filtre LDAP, attributs)",
+        "←/→ : Changer d'onglet",
+        "↑/↓ : Navigation dans la liste",
+        "ESC : Quitter l'application",
+        "",
+        "Dans l'onglet 'Recherche', vous pouvez sélectionner un objet, puis",
+        "utiliser les mêmes raccourcis (a, m, r, v, d) s'il possède un DN."
+    ]
+    height = len(help_text) + 4
+    width = max(len(line) for line in help_text) + 4
+    win = curses.newwin(height, width, max((max_y - height)//2, 0), max((max_x - width)//2, 0))
+    win.box()
+    for idx, line in enumerate(help_text):
+        win.addstr(idx+1, 2, line)
+    win.refresh()
+    win.getch()
 
 if __name__ == "__main__":
     admin_user = input("[LOGIN] Entrez le nom d'utilisateur Samba AD : ")
