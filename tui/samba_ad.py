@@ -7,7 +7,6 @@ from samba.param import LoadParm
 def detect_domain_settings(admin_user, admin_password):
     """
     Connexion au domaine Samba AD avec authentification.
-    
     Renvoie un dictionnaire contenant :
       - samdb : l'instance SamDB
       - domain_dn : le DN du domaine
@@ -22,9 +21,16 @@ def detect_domain_settings(admin_user, admin_password):
         creds.guess(lp)
         samdb = SamDB(url="ldap://localhost", credentials=creds, lp=lp)
         # Récupération du contexte par défaut
-        domain_dn = samdb.search(base="", scope=0, attrs=["defaultNamingContext"])[0]["defaultNamingContext"][0]
+        result = samdb.search(base="", scope=0, attrs=["defaultNamingContext"])
+        domain_dn = result[0]["defaultNamingContext"][0]
         # Récupération du nom de domaine via l'attribut "dc"
-        domain_name = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])[0]["dc"][0]
+        result = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])
+        domain_name = result[0]["dc"][0]
+        # Si nécessaire, décoder les bytes
+        if isinstance(domain_dn, bytes):
+            domain_dn = domain_dn.decode("utf-8", errors="replace")
+        if isinstance(domain_name, bytes):
+            domain_name = domain_name.decode("utf-8", errors="replace")
         return {"samdb": samdb, "domain_dn": domain_dn, "domain_name": domain_name, "user": admin_user}
     except Exception as e:
         return f"[ERROR] Connexion échouée : {e}"
@@ -32,7 +38,14 @@ def detect_domain_settings(admin_user, admin_password):
 # --- Fonctions de gestion des Organizational Units (OUs) ---
 def list_ous(samdb, domain_dn):
     ous = samdb.search(base=domain_dn, expression="(objectClass=organizationalUnit)", attrs=["ou", "dn"])
-    return [ou["ou"][0].decode('utf-8') if isinstance(ou["ou"][0], bytes) else ou["ou"][0] for ou in ous] if ous else []
+    result = []
+    if ous:
+        for ou in ous:
+            name = ou["ou"][0]
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            result.append({"name": name, "dn": ou.get("dn")})
+    return result
 
 def create_ou(samdb, domain_dn, ou_name):
     try:
@@ -52,12 +65,21 @@ def delete_ou(samdb, domain_dn, ou_name):
 
 # --- Fonctions de gestion des Groupes ---
 def list_groups(samdb, domain_dn):
-    try:
-        base = f"CN=Users,{domain_dn}"
-        groups = samdb.search(base=base, expression="(objectClass=group)", attrs=["cn"])
-        return [group["cn"][0] for group in groups] if groups else []
-    except Exception as e:
-        return f"[ERROR] {e}"
+    base = f"CN=Users,{domain_dn}"
+    groups = samdb.search(base=base, expression="(objectClass=group)", attrs=["cn", "description", "dn"])
+    result = []
+    if groups:
+        for group in groups:
+            name = group["cn"][0]
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            description = ""
+            if "description" in group and group["description"]:
+                description = group["description"][0]
+                if isinstance(description, bytes):
+                    description = description.decode("utf-8", errors="replace")
+            result.append({"name": name, "description": description, "dn": group.get("dn")})
+    return result
 
 def create_group(samdb, domain_dn, group_name):
     try:
@@ -78,8 +100,15 @@ def delete_group(samdb, domain_dn, group_name):
 # --- Fonctions de gestion des GPOs ---
 def list_gpos(samdb, domain_dn):
     gpo_base = f"CN=Policies,CN=System,{domain_dn}"
-    gpos = samdb.search(base=gpo_base, expression="(objectClass=groupPolicyContainer)", attrs=["displayName"])
-    return [gpo["displayName"][0].decode('utf-8') if isinstance(gpo["displayName"][0], bytes) else gpo["displayName"][0] for gpo in gpos] if gpos else []
+    gpos = samdb.search(base=gpo_base, expression="(objectClass=groupPolicyContainer)", attrs=["displayName", "dn"])
+    result = []
+    if gpos:
+        for gpo in gpos:
+            name = gpo["displayName"][0]
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            result.append({"name": name, "dn": gpo.get("dn")})
+    return result
 
 def create_full_gpo(gpo_name):
     try:
@@ -105,10 +134,25 @@ def delete_gpo(samdb, domain_dn, gpo_name):
 
 # --- Fonctions de gestion des Utilisateurs ---
 def list_users(samdb, domain_dn):
-    users = samdb.search(base=domain_dn, expression="(objectClass=user)", attrs=["sAMAccountName"])
-    return [user["sAMAccountName"][0].decode('utf-8') if isinstance(user["sAMAccountName"][0], bytes)
-            else user["sAMAccountName"][0]
-            for user in users if user["sAMAccountName"][0].lower() != b"krbtgt"] if users else []
+    # Récupération enrichie : cn, sAMAccountName, description, dn
+    users = samdb.search(base=domain_dn, expression="(&(objectClass=user)(!(sAMAccountName=krbtgt)))", 
+                         attrs=["cn", "sAMAccountName", "description", "dn"])
+    result = []
+    if users:
+        for user in users:
+            cn = user.get("cn", [b""])[0]
+            if isinstance(cn, bytes):
+                cn = cn.decode("utf-8", errors="replace")
+            sam = user.get("sAMAccountName", [b""])[0]
+            if isinstance(sam, bytes):
+                sam = sam.decode("utf-8", errors="replace")
+            desc = ""
+            if "description" in user and user["description"]:
+                desc = user["description"][0]
+                if isinstance(desc, bytes):
+                    desc = desc.decode("utf-8", errors="replace")
+            result.append({"cn": cn, "sAMAccountName": sam, "description": desc, "dn": user.get("dn")})
+    return result
 
 def create_user(samdb, domain_dn, user_name, password):
     try:
@@ -134,12 +178,18 @@ def delete_user(samdb, domain_dn, user_name):
 
 # --- Fonctions de gestion des Ordinateurs ---
 def list_computers(samdb, domain_dn):
-    try:
-        computers = samdb.search(base=domain_dn, expression="(objectClass=computer)", attrs=["cn"])
-        return [comp["cn"][0].decode('utf-8') if isinstance(comp["cn"][0], bytes)
-                else comp["cn"][0] for comp in computers] if computers else []
-    except Exception as e:
-        return f"[ERROR] {e}"
+    computers = samdb.search(base=domain_dn, expression="(objectClass=computer)", attrs=["cn", "sAMAccountName", "dn"])
+    result = []
+    if computers:
+        for comp in computers:
+            cn = comp.get("cn", [b""])[0]
+            if isinstance(cn, bytes):
+                cn = cn.decode("utf-8", errors="replace")
+            sam = comp.get("sAMAccountName", [b""])[0]
+            if isinstance(sam, bytes):
+                sam = sam.decode("utf-8", errors="replace")
+            result.append({"name": cn, "sAMAccountName": sam, "dn": comp.get("dn")})
+    return result
 
 def create_computer(samdb, domain_dn, computer_name):
     try:
@@ -172,7 +222,6 @@ def move_computer(samdb, domain_dn, computer_name, target_ou):
         return f"[ERROR] Impossible de déplacer l'ordinateur : {e}"
 
 # --- Fonctions avancées génériques ---
-
 def modify_object(samdb, dn, modifications):
     """
     Modifie un objet en remplaçant ses attributs.
@@ -198,7 +247,7 @@ def get_object_attributes(samdb, dn):
 
 def search_objects(samdb, base, filter_expr, attrs=None):
     """
-    Effectue une recherche dans l'annuaire à partir d'un base DN, d'une expression filtre,
+    Effectue une recherche dans l'annuaire à partir d'une base DN, d'une expression filtre,
     et d'une liste d'attributs à récupérer (ou tous si None).
     """
     try:
@@ -241,7 +290,7 @@ def refresh_data(domain_info):
     data['computers'] = list_computers(domain_info["samdb"], domain_info["domain_dn"])
     data['dashboard'] = {
          "OUs": len(data['ous']),
-         "Groupes": len(data['groupes']) if isinstance(data['groupes'], list) else 0,
+         "Groupes": len(data['groupes']),
          "GPOs": len(data['gpos']),
          "Utilisateurs": len(data['users']),
          "Ordinateurs": len(data['computers'])

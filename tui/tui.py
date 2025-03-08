@@ -3,7 +3,7 @@ import getpass
 import time
 import textwrap
 
-# Import des fonctions Samba AD depuis votre script "samba_ad.py"
+# Import des fonctions Samba AD depuis samba_ad.py
 from samba_ad import (
     detect_domain_settings,
     create_ou, delete_ou,
@@ -20,12 +20,11 @@ def init_colors():
     if curses.has_colors():
         curses.start_color()
         curses.use_default_colors()
-        # Définition de paires de couleurs
-        curses.init_pair(1, curses.COLOR_CYAN, -1)       # Pour le header/spinner
-        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Pour l'onglet actif
-        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)   # Pour la sidebar (élément sélectionné)
-        curses.init_pair(4, curses.COLOR_YELLOW, -1)    # Pour la barre de statut
-        curses.init_pair(5, curses.COLOR_MAGENTA, -1)   # (optionnel, si besoin)
+        curses.init_pair(1, curses.COLOR_CYAN, -1)       # Header/spinner
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Onglet actif
+        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)   # Sidebar (élément sélectionné)
+        curses.init_pair(4, curses.COLOR_YELLOW, -1)    # Barre de statut
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)   # Optionnel
 
 def get_spinner():
     """Renvoie un caractère de spinner en fonction du temps."""
@@ -40,7 +39,7 @@ def animate_intro(stdscr):
  / ___| _ __   __ _  ___| | ____ _  
  \___ \| '_ \ / _` |/ __| |/ / _` | 
   ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|\___|_|\_\__,_| 
+ |____/| .__/ \__,_|___|_|\_\__,_| 
        |_|                         
         """,
         r"""
@@ -48,7 +47,7 @@ def animate_intro(stdscr):
  / ___| _ __   __ _  ___| | ____ _  
  \___ \| '_ \ / _` |/ __| |/ / _` | 
   ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|\___|_|\_\__,_| 
+ |____/| .__/ \__,_|___|_|\_\__,_| 
        |_|         ~~~            
         """,
         r"""
@@ -56,7 +55,7 @@ def animate_intro(stdscr):
  / ___| _ __   __ _  ___| | ____ _  
  \___ \| '_ \ / _` |/ __| |/ / _` | 
   ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|\___|_|\_\__,_| 
+ |____/| .__/ \__,_|___|_|\_\__,_| 
        |_|   * Bienvenue *        
         """
     ]
@@ -97,7 +96,7 @@ def draw_ascii_header(win, domain_info):
     win.refresh()
 
 def draw_tab_bar(win, current_tab, tabs):
-    """Barre d'onglets."""
+    """Affiche la barre d'onglets."""
     win.clear()
     max_y, max_x = win.getmaxyx()
     x = 2
@@ -111,7 +110,7 @@ def draw_tab_bar(win, current_tab, tabs):
     win.refresh()
 
 def draw_status_bar(win, message):
-    """Barre de statut en bas."""
+    """Affiche la barre de statut en bas."""
     win.clear()
     max_y, max_x = win.getmaxyx()
     status = message if message else (
@@ -125,6 +124,7 @@ def draw_status_bar(win, message):
 def get_items_for_tab(current_tab, data):
     """
     Retourne la liste d'éléments correspondant à l'onglet courant.
+    Pour les onglets riches, on retourne directement la liste de dictionnaires.
     """
     if current_tab == 0:  # Dashboard
         return list(data['dashboard'].items())
@@ -139,58 +139,97 @@ def get_items_for_tab(current_tab, data):
     elif current_tab == 5:
         return data['computers']
     elif current_tab == 6:
-        # Onglet Recherche avancée
         return data.get('recherche', [])
     return []
 
 def draw_sidebar(win, current_tab, data, selected_index, filter_str):
-    """Affiche la liste (sidebar) avec surbrillance sur l'élément sélectionné."""
+    """Affiche la sidebar avec surbrillance sur l'élément sélectionné."""
     win.clear()
     items = get_items_for_tab(current_tab, data)
     if filter_str:
         items = [item for item in items if filter_str.lower() in str(item).lower()]
 
-    for idx, item in enumerate(items):
-        if current_tab == 6 and isinstance(item, dict) and "dn" in item:
-            # Pour l'onglet Recherche, on affiche le DN
-            display_text = item["dn"]
-        else:
-            display_text = f"{item}" if current_tab != 0 else f"{item[0]}: {item[1]}"
-        if idx == selected_index:
-            win.addstr(idx+1, 1, display_text, curses.color_pair(3))
-        else:
-            win.addstr(idx+1, 1, display_text)
+    height, width = win.getmaxyx()
+    max_len = width - 3  # marge pour éviter débordement
+
+    if current_tab == 0:
+        # Dashboard : items est une liste de tuples (clé, valeur)
+        key_width = 20
+        for idx, (key, value) in enumerate(items):
+            line = f"{str(key).ljust(key_width)} : {value}"
+            if len(line) > max_len:
+                line = line[:max_len]
+            if idx == selected_index:
+                win.addstr(idx + 1, 1, line, curses.color_pair(3))
+            else:
+                win.addstr(idx + 1, 1, line)
+    else:
+        for idx, item in enumerate(items):
+            # Si l'item est un dictionnaire, on affiche selon l'onglet
+            if isinstance(item, dict):
+                if current_tab == 1:  # OUs
+                    display_text = f"OU : {item.get('name', '')}"
+                elif current_tab == 2:  # Groupes
+                    display_text = f"Groupe : {item.get('name', '')}"
+                elif current_tab == 3:  # GPOs
+                    display_text = f"GPO : {item.get('name', '')}"
+                elif current_tab == 4:  # Utilisateurs
+                    sam = item.get("sAMAccountName", "")
+                    cn  = item.get("cn", "")
+                    display_text = f"User : {sam} ({cn})"
+                elif current_tab == 5:  # Ordinateurs
+                    display_text = f"PC : {item.get('name', '')}"
+                elif current_tab == 6:
+                    display_text = item.get("dn", str(item))
+                else:
+                    display_text = str(item)
+            else:
+                # Si l'item est une simple chaîne
+                if current_tab == 1:
+                    display_text = f"OU : {item}"
+                elif current_tab == 2:
+                    display_text = f"Groupe : {item}"
+                elif current_tab == 3:
+                    display_text = f"GPO : {item}"
+                elif current_tab == 4:
+                    display_text = f"Utilisateur : {item}"
+                elif current_tab == 5:
+                    display_text = f"Ordinateur : {item}"
+                else:
+                    display_text = str(item)
+            if len(display_text) > max_len:
+                display_text = display_text[:max_len]
+            if idx == selected_index:
+                win.addstr(idx + 1, 1, display_text, curses.color_pair(3))
+            else:
+                win.addstr(idx + 1, 1, display_text)
+
     win.box()
     win.refresh()
 
 def draw_content(win, current_tab, data, selected_index, filter_str):
-    """
-    Panneau de contenu : affichage vertical, wrap du texte si trop long.
-    """
+    """Affiche le contenu détaillé de l'élément sélectionné."""
     win.clear()
     height, width = win.getmaxyx()
     items = get_items_for_tab(current_tab, data)
     if filter_str:
         items = [item for item in items if filter_str.lower() in str(item).lower()]
 
-    # Construction du texte
     if items:
         selected_item = items[selected_index]
         if current_tab == 0:
-            # Dashboard
             details = f"{selected_item[0]} : {selected_item[1]}"
         elif current_tab == 6 and isinstance(selected_item, dict):
-            # Recherche : affichage de toutes les clés/valeurs
-            lines = []
-            for k, v in selected_item.items():
-                lines.append(f"{k}: {v}")
+            lines = [f"{k}: {v}" for k, v in selected_item.items()]
+            details = "\n".join(lines)
+        elif isinstance(selected_item, dict):
+            lines = [f"{k}: {v}" for k, v in selected_item.items()]
             details = "\n".join(lines)
         else:
             details = f"Nom : {selected_item}"
     else:
         details = "Aucun élément"
 
-    # Wrap
     wrapped_lines = []
     for line in details.splitlines():
         sub_lines = textwrap.wrap(line, width=width - 4)
@@ -198,6 +237,11 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
             wrapped_lines.append("")
         else:
             wrapped_lines.extend(sub_lines)
+
+    max_width = width - 4
+    for i in range(len(wrapped_lines)):
+        if len(wrapped_lines[i]) > max_width:
+            wrapped_lines[i] = wrapped_lines[i][:max_width]
 
     row = 1
     for wline in wrapped_lines:
@@ -212,9 +256,8 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
-    Reçoit un dict de la forme { 'attributeName': [valeurs], ... }
-    Convertit proprement en chaînes de caractères, trie les attributs par ordre alphabétique,
-    et renvoie une grande chaîne à afficher.
+    Convertit un dict d'attributs (où chaque valeur est une liste) en une chaîne lisible.
+    Trie les attributs par ordre alphabétique.
     """
     lines = []
     for attr_name in sorted(attrs.keys()):
@@ -222,7 +265,6 @@ def parse_samba_attrs(attrs):
         parsed_values = []
         for val in values:
             if hasattr(val, "get_value"):
-                # MessageElement
                 raw_val = val.get_value()
                 if isinstance(raw_val, bytes):
                     try:
@@ -232,13 +274,11 @@ def parse_samba_attrs(attrs):
                 else:
                     str_val = str(raw_val)
             elif isinstance(val, bytes):
-                # Bytes direct
                 try:
                     str_val = val.decode("utf-8", errors="replace")
                 except:
                     str_val = repr(val)
             else:
-                # Sinon, on convertit en string
                 str_val = str(val)
             parsed_values.append(str_val)
         joined_vals = ", ".join(parsed_values)
@@ -246,18 +286,13 @@ def parse_samba_attrs(attrs):
     return "\n".join(lines)
 
 def display_modal_text(stdscr, title, text):
-    """
-    Fenêtre modale occupant ~80% de l'écran, scrollable avec ↑/↓.
-    """
+    """Affiche une fenêtre modale scrollable (80% de l'écran)."""
     curses.noecho()
     max_y, max_x = stdscr.getmaxyx()
-
     height = max_y * 7 // 10
     width = max_x * 7 // 10
     start_y = (max_y - height) // 2
     start_x = (max_x - width) // 2
-
-    # Wrap
     wrapped_lines = []
     for line in text.splitlines():
         sub_lines = textwrap.wrap(line, width=width - 4)
@@ -265,28 +300,22 @@ def display_modal_text(stdscr, title, text):
             wrapped_lines.append("")
         else:
             wrapped_lines.extend(sub_lines)
-
     win = curses.newwin(height, width, start_y, start_x)
     win.box()
     truncated_title = title[:width - 4]
     win.addstr(0, 2, truncated_title, curses.A_BOLD)
-
     top_line = 0
     visible_height = height - 2
-
     while True:
         for r in range(1, height - 1):
             win.move(r, 1)
             win.clrtoeol()
-
         row = 1
         for i in range(top_line, min(top_line + visible_height, len(wrapped_lines))):
             win.addstr(row, 2, wrapped_lines[i][:width - 4])
             row += 1
-
         win.box()
         win.refresh()
-
         ch = stdscr.getch()
         if ch == curses.KEY_UP:
             top_line = max(top_line - 1, 0)
@@ -297,6 +326,7 @@ def display_modal_text(stdscr, title, text):
             break
 
 def modal_input(stdscr, title, prompt):
+    """Fenêtre modale pour saisir une entrée."""
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
     width = max(len(prompt) + 20, 50)
@@ -310,6 +340,7 @@ def modal_input(stdscr, title, prompt):
     return input_val
 
 def modal_input_multiple(stdscr, title, prompts):
+    """Fenêtre modale pour saisir plusieurs entrées."""
     responses = {}
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
@@ -327,6 +358,7 @@ def modal_input_multiple(stdscr, title, prompts):
     return responses
 
 def modal_confirm(stdscr, prompt):
+    """Fenêtre modale de confirmation (oui/non)."""
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
     width = len(prompt) + 10
@@ -341,20 +373,24 @@ def modal_confirm(stdscr, prompt):
 def get_dn_for_selected(current_tab, selected_item, domain_info):
     """
     Construit le DN en fonction de l'onglet et de l'élément sélectionné.
+    Si l'objet est un dictionnaire, on utilise la clé 'dn'.
     """
     dn = None
-    if current_tab == 1:
-        dn = f"OU={selected_item},{domain_info['domain_dn']}"
-    elif current_tab == 2:
-        dn = f"CN={selected_item},CN=Users,{domain_info['domain_dn']}"
-    elif current_tab == 3:
-        dn = f"CN={selected_item},CN=Policies,CN=System,{domain_info['domain_dn']}"
-    elif current_tab == 4:
-        dn = f"CN={selected_item},CN=Users,{domain_info['domain_dn']}"
-    elif current_tab == 5:
-        dn = f"CN={selected_item},CN=Computers,{domain_info['domain_dn']}"
-    elif current_tab == 6 and isinstance(selected_item, dict):
-        dn = selected_item.get("dn", str(selected_item))
+    if isinstance(selected_item, dict) and "dn" in selected_item:
+        dn = selected_item["dn"]
+    else:
+        if current_tab == 1:
+            dn = f"OU={selected_item},{domain_info['domain_dn']}"
+        elif current_tab == 2:
+            dn = f"CN={selected_item},CN=Users,{domain_info['domain_dn']}"
+        elif current_tab == 3:
+            dn = f"CN={selected_item},CN=Policies,CN=System,{domain_info['domain_dn']}"
+        elif current_tab == 4:
+            dn = f"CN={selected_item},CN=Users,{domain_info['domain_dn']}"
+        elif current_tab == 5:
+            dn = f"CN={selected_item},CN=Computers,{domain_info['domain_dn']}"
+        elif current_tab == 6:
+            dn = str(selected_item)
     return dn
 
 def handle_create_action(stdscr, current_tab, domain_info):
@@ -393,19 +429,17 @@ def handle_delete_action(stdscr, current_tab, data, selected_index, domain_info)
     confirm = modal_confirm(stdscr, f"Supprimer {selected_item}? (y/n): ")
     if confirm:
         if current_tab in (1, 2, 3, 4, 5):
-            # OUs, Groupes, GPOs, Utilisateurs, Ordinateurs
             if current_tab == 1:
-                return delete_ou(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+                return delete_ou(domain_info["samdb"], domain_info["domain_dn"], selected_item.get("name", selected_item))
             elif current_tab == 2:
-                return delete_group(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+                return delete_group(domain_info["samdb"], domain_info["domain_dn"], selected_item.get("name", selected_item))
             elif current_tab == 3:
-                return delete_gpo(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+                return delete_gpo(domain_info["samdb"], domain_info["domain_dn"], selected_item.get("name", selected_item))
             elif current_tab == 4:
-                return delete_user(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+                return delete_user(domain_info["samdb"], domain_info["domain_dn"], selected_item.get("sAMAccountName", selected_item))
             elif current_tab == 5:
-                return delete_computer(domain_info["samdb"], domain_info["domain_dn"], selected_item)
+                return delete_computer(domain_info["samdb"], domain_info["domain_dn"], selected_item.get("name", selected_item))
         elif current_tab == 6:
-            # Suppression d'un objet trouvé par la recherche
             dn = get_dn_for_selected(current_tab, selected_item, domain_info)
             if dn:
                 try:
@@ -422,16 +456,14 @@ def main_tui(stdscr, domain_info):
     stdscr.nodelay(False)
     stdscr.timeout(100)
 
-    # Les onglets : 0=Dashboard, 1=OUs, 2=Groupes, 3=GPOs, 4=Utilisateurs, 5=Ordinateurs, 6=Recherche
+    # Onglets : 0=Dashboard, 1=OUs, 2=Groupes, 3=GPOs, 4=Utilisateurs, 5=Ordinateurs, 6=Recherche
     tabs = ["Dashboard", "OUs", "Groupes", "GPOs", "Utilisateurs", "Ordinateurs", "Recherche"]
     current_tab = 0
     selected_index = 0
     filter_str = ""
     notification = ""
 
-    # Récupération initiale des données
     data = refresh_data(domain_info)
-    # Préparation de la zone "recherche"
     data['recherche'] = []
 
     max_y, max_x = stdscr.getmaxyx()
@@ -452,17 +484,15 @@ def main_tui(stdscr, domain_info):
 
     while True:
         stdscr.erase()
-
         draw_ascii_header(header_win, domain_info)
         draw_tab_bar(tab_win, current_tab, tabs)
         draw_sidebar(sidebar_win, current_tab, data, selected_index, filter_str)
         draw_content(content_win, current_tab, data, selected_index, filter_str)
         draw_status_bar(status_win, notification)
-
         stdscr.refresh()
         key = stdscr.getch()
 
-        # Navigation onglets
+        # Navigation entre onglets
         if key == curses.KEY_LEFT:
             current_tab = (current_tab - 1) % len(tabs)
             selected_index = 0
@@ -472,7 +502,7 @@ def main_tui(stdscr, domain_info):
             selected_index = 0
             filter_str = ""
 
-        # Navigation liste
+        # Navigation dans la liste
         elif key == curses.KEY_UP:
             selected_index = max(selected_index - 1, 0)
         elif key == curses.KEY_DOWN:
@@ -584,7 +614,7 @@ def main_tui(stdscr, domain_info):
     stdscr.refresh()
 
 def show_help(stdscr):
-    """Fenêtre d'aide."""
+    """Affiche une fenêtre d'aide avec les raccourcis clavier."""
     max_y, max_x = stdscr.getmaxyx()
     help_text = [
         "Aide - Raccourcis clavier:",
