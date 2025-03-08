@@ -79,12 +79,11 @@ def draw_ascii_header(win, domain_info):
     """Affiche l'ASCII art, le spinner et les infos de domaine/utilisateur en haut."""
     win.clear()
     ascii_art = [
-        "  ____                   _             _     _    ",
-        " / ___| _ __   __ _  ___| | ____ _  __| | __| |   ",
-        " \\___ \\| '_ \\ / _` |/ __| |/ / _` |/ _` |/ _` |   ",
-        "  ___) | |_) | (_| | (__|   < (_| | (_| | (_| |   ",
-        " |____/| .__/ \\__,_|\\___|_|\\_\\__,_|\\__,_|\\__,_|   "
-    ]
+		"	__  ______     ______ _   __       ",
+		"  	/| )/  )/__)/  )__/(   /  /_| /__) ", 
+	    "  / |/(__// ( (  /  /__) (  (  |/ (   ",
+        "                                      "                                                                                       
+    ]     
     max_y, max_x = win.getmaxyx()
     start_y = 1
     for i, line in enumerate(ascii_art):
