@@ -32,42 +32,46 @@ def get_spinner():
     return spinner_frames[int(time.time() * 4) % len(spinner_frames)]
 
 def animate_intro(stdscr):
-    """Affiche une petite animation d'introduction."""
-    frames = [
-        r"""
-  ____                   _             
- / ___| _ __   __ _  ___| | ____ _  
- \___ \| '_ \ / _` |/ __| |/ / _` | 
-  ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|___|_|\_\__,_| 
-       |_|                         
-        """,
-        r"""
-  ____                   _             
- / ___| _ __   __ _  ___| | ____ _  
- \___ \| '_ \ / _` |/ __| |/ / _` | 
-  ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|___|_|\_\__,_| 
-       |_|         ~~~            
-        """,
-        r"""
-  ____                   _             
- / ___| _ __   __ _  ___| | ____ _  
- \___ \| '_ \ / _` |/ __| |/ / _` | 
-  ___) | |_) | (_| | (__|   < (_| | 
- |____/| .__/ \__,_|___|_|\_\__,_| 
-       |_|   * Bienvenue *        
-        """
+    """Affiche une animation de chargement style 'System Booting'."""
+    curses.curs_set(0)  # Masquer le curseur
+    stdscr.clear()
+    stdscr.refresh()
+
+    loading_frames = [
+        "[░░░░░░░░░░░░░░░░░░░░░░░░]   0%",
+        "[▓░░░░░░░░░░░░░░░░░░░░░░░]   5%",
+        "[▓▓░░░░░░░░░░░░░░░░░░░░░░]  10%",
+        "[▓▓▓░░░░░░░░░░░░░░░░░░░░░]  15%",
+        "[▓▓▓▓░░░░░░░░░░░░░░░░░░░░]  20%",
+        "[▓▓▓▓▓░░░░░░░░░░░░░░░░░░░]  25%",
+        "[▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░]  30%",
+        "[▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░]  35%",
+        "[▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░]  40%",
+        "[▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░]  45%",
+        "[▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░]  50%",
+        "[▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░]  55%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░]  60%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░]  65%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░]  70%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░]  75%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░]  80%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░]  85%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░]  90%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░]  95%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░]  98%",
+        "[▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%",
     ]
+
     max_y, max_x = stdscr.getmaxyx()
-    for frame in frames:
+    
+    for frame in loading_frames:
         stdscr.erase()
-        lines = frame.strip("\n").splitlines()
-        start_y = max((max_y - len(lines)) // 2, 0)
-        for i, line in enumerate(lines):
-            stdscr.addstr(start_y + i, max((max_x - len(line)) // 2, 0), line, curses.A_BOLD)
+        stdscr.addstr(max_y // 2 - 1, (max_x - len("SYSTEM BOOTING...")) // 2, "SYSTEM BOOTING...", curses.A_BOLD)
+        stdscr.addstr(max_y // 2, (max_x - len(frame)) // 2, frame, curses.A_BOLD)
+        stdscr.addstr(max_y // 2 + 1, (max_x - len("PLEASE WAIT...")) // 2, "PLEASE WAIT...", curses.A_DIM)
         stdscr.refresh()
-        curses.napms(700)
+        time.sleep(0.2)
+
     stdscr.erase()
     stdscr.refresh()
 
