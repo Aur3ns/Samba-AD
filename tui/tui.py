@@ -256,8 +256,7 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
-    Convertit un dict d'attributs (où chaque valeur est une liste) en une chaîne lisible.
-    Trie les attributs par ordre alphabétique.
+    Formate les attributs Samba en chaîne lisible avec des retours à la ligne après chaque virgule suivie d'un espace et d'une apostrophe.
     """
     lines = []
     for attr_name in sorted(attrs.keys()):
@@ -281,7 +280,12 @@ def parse_samba_attrs(attrs):
             else:
                 str_val = str(val)
             parsed_values.append(str_val)
+
         joined_vals = ", ".join(parsed_values)
+
+        # Remplacer chaque ", '" par ",\n'" pour retour à la ligne automatique
+        joined_vals = joined_vals.replace(", '", ",\n'")
+
         lines.append(f"{attr_name}: {joined_vals}")
     return "\n".join(lines)
 
