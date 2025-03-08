@@ -256,12 +256,13 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
-    Formate les attributs Samba en chaîne lisible avec des retours à la ligne après chaque virgule suivie d'un espace et d'une apostrophe.
+    Parse et formate clairement les attributs LDAP (Samba AD).
+    Chaque attribut est affiché sur une ligne séparée, avec ses valeurs listées individuellement.
     """
     lines = []
     for attr_name in sorted(attrs.keys()):
         values = attrs[attr_name]
-        parsed_values = []
+        formatted_values = []
         for val in values:
             if hasattr(val, "get_value"):
                 raw_val = val.get_value()
@@ -279,15 +280,23 @@ def parse_samba_attrs(attrs):
                     str_val = repr(val)
             else:
                 str_val = str(val)
-            parsed_values.append(str_val)
 
-        joined_vals = ", ".join(parsed_values)
+            # Nettoyer et remplacer les retours à la ligne parasites
+            str_val = str_val.replace("\r", "\\r").replace("\n", "\\n")
 
-        # Remplacer chaque ", '" par ",\n'" pour retour à la ligne automatique
-        joined_vals = joined_vals.replace(", '", ",\n'")
+            formatted_values.append(str_val)
 
-        lines.append(f"{attr_name}: {joined_vals}")
+        # Si un attribut a plusieurs valeurs, chacune est affichée séparément
+        if len(formatted_values) > 1:
+            lines.append(f"{attr_name}:")
+            for single_val in formatted_values:
+                lines.append(f"  - {single_val}")
+        else:
+            lines.append(f"{attr_name}: {formatted_values[0]}")
+
+    # Chaque attribut clairement séparé par une nouvelle ligne
     return "\n".join(lines)
+
 
 def display_modal_text(stdscr, title, text):
     """Affiche une fenêtre modale scrollable (80% de l'écran)."""
