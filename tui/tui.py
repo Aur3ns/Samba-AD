@@ -207,51 +207,46 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
     win.box()
     win.refresh()
 
-def draw_content(win, current_tab, data, selected_index, filter_str):
-    """Affiche le contenu détaillé de l'élément sélectionné."""
+def draw_content(win, current_tab, data, selected_index, filter_str, domain_info):
+    """
+    Affiche clairement les attributs de l'objet sélectionné avec parse_samba_attrs.
+    """
     win.clear()
     height, width = win.getmaxyx()
     items = get_items_for_tab(current_tab, data)
     if filter_str:
         items = [item for item in items if filter_str.lower() in str(item).lower()]
 
-    if items:
-        selected_item = items[selected_index]
-        if current_tab == 0:
-            details = f"{selected_item[0]} : {selected_item[1]}"
-        elif current_tab == 6 and isinstance(selected_item, dict):
-            lines = [f"{k}: {v}" for k, v in selected_item.items()]
-            details = "\n".join(lines)
-        elif isinstance(selected_item, dict):
-            lines = [f"{k}: {v}" for k, v in selected_item.items()]
-            details = "\n".join(lines)
-        else:
-            details = f"Nom : {selected_item}"
-    else:
+    if not items:
         details = "Aucun élément"
+    else:
+        selected_item = items[selected_index]
+        dn = get_dn_for_selected(current_tab, selected_item, domain_info)
+        
+        if dn:
+            attrs = get_object_attributes(domain_info["samdb"], dn)
+            if isinstance(attrs, dict):
+                details = parse_samba_attrs(attrs)
+            else:
+                details = str(attrs)
+        else:
+            details = str(selected_item)
 
     wrapped_lines = []
     for line in details.splitlines():
         sub_lines = textwrap.wrap(line, width=width - 4)
-        if not sub_lines:
-            wrapped_lines.append("")
-        else:
-            wrapped_lines.extend(sub_lines)
-
-    max_width = width - 4
-    for i in range(len(wrapped_lines)):
-        if len(wrapped_lines[i]) > max_width:
-            wrapped_lines[i] = wrapped_lines[i][:max_width]
+        wrapped_lines.extend(sub_lines or [""])
 
     row = 1
     for wline in wrapped_lines:
         if row >= height - 1:
             break
-        win.addstr(row, 2, wline)
+        win.addstr(row, 2, wline[:width-4])
         row += 1
 
     win.box()
     win.refresh()
+
 
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
@@ -498,7 +493,7 @@ def main_tui(stdscr, domain_info):
         draw_ascii_header(header_win, domain_info)
         draw_tab_bar(tab_win, current_tab, tabs)
         draw_sidebar(sidebar_win, current_tab, data, selected_index, filter_str)
-        draw_content(content_win, current_tab, data, selected_index, filter_str)
+        draw_content(content_win, current_tab, data, selected_index, filter_str, domain_info)
         draw_status_bar(status_win, notification)
         stdscr.refresh()
         key = stdscr.getch()
