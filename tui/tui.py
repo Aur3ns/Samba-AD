@@ -256,44 +256,47 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
-    Parse proprement et clairement les attributs LDAP Samba AD en affichant une information par ligne.
+    Parse et formate clairement les attributs LDAP (Samba AD).
+    Chaque attribut est affiché sur une ligne séparée, avec ses valeurs listées individuellement.
     """
     lines = []
-
-    # Parcours trié des attributs
     for attr_name in sorted(attrs.keys()):
         values = attrs[attr_name]
-
-        # Pour chaque valeur, extraction propre
-        parsed_values = []
+        formatted_values = []
         for val in values:
-            # Extraction des valeurs réelles depuis MessageElement
             if hasattr(val, "get_value"):
-                val = val.get_value()
-
-            # Décodage des bytes
-            if isinstance(val, bytes):
+                raw_val = val.get_value()
+                if isinstance(raw_val, bytes):
+                    try:
+                        str_val = raw_val.decode("utf-8", errors="replace")
+                    except:
+                        str_val = repr(raw_val)
+                else:
+                    str_val = str(raw_val)
+            elif isinstance(val, bytes):
                 try:
-                    val_str = val.decode("utf-8", errors="replace")
+                    str_val = val.decode("utf-8", errors="replace")
                 except:
-                    val_str = repr(val)
+                    str_val = repr(val)
             else:
-                val_str = str(val)
+                str_val = str(val)
 
-            # Échapper clairement les retours à la ligne
-            val_str = val_str.replace("\r", "\\r").replace("\n", "\\n")
+            # Nettoyer et remplacer les retours à la ligne parasites
+            str_val = str_val.replace("\r", "\\r").replace("\n", "\\n")
 
-            parsed_values.append(val_str)
+            formatted_values.append(str_val)
 
-        # Formatage final
-        if len(parsed_values) == 1:
-            lines.append(f"{attr_name}: {parsed_values[0]}")
-        else:
+        # Si un attribut a plusieurs valeurs, chacune est affichée séparément
+        if len(formatted_values) > 1:
             lines.append(f"{attr_name}:")
-            for single_val in parsed_values:
+            for single_val in formatted_values:
                 lines.append(f"  - {single_val}")
+        else:
+            lines.append(f"{attr_name}: {formatted_values[0]}")
 
+    # Chaque attribut clairement séparé par une nouvelle ligne
     return "\n".join(lines)
+
 
 
 def display_modal_text(stdscr, title, text):
@@ -498,7 +501,7 @@ def main_tui(stdscr, domain_info):
         draw_ascii_header(header_win, domain_info)
         draw_tab_bar(tab_win, current_tab, tabs)
         draw_sidebar(sidebar_win, current_tab, data, selected_index, filter_str)
-        draw_content(content_win, current_tab, data, selected_index, filter_str, domain_info)
+        draw_content(content_win, current_tab, data, selected_index, filter_str)
         draw_status_bar(status_win, notification)
         stdscr.refresh()
         key = stdscr.getch()
