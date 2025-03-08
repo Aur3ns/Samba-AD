@@ -256,45 +256,43 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
 # --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
-    Parse et formate clairement les attributs LDAP (Samba AD).
-    Chaque attribut est affiché sur une ligne séparée, avec ses valeurs listées individuellement.
+    Parse proprement et clairement les attributs LDAP Samba AD en affichant une information par ligne.
     """
     lines = []
+
+    # Parcours trié des attributs
     for attr_name in sorted(attrs.keys()):
         values = attrs[attr_name]
-        formatted_values = []
+
+        # Pour chaque valeur, extraction propre
+        parsed_values = []
         for val in values:
+            # Extraction des valeurs réelles depuis MessageElement
             if hasattr(val, "get_value"):
-                raw_val = val.get_value()
-                if isinstance(raw_val, bytes):
-                    try:
-                        str_val = raw_val.decode("utf-8", errors="replace")
-                    except:
-                        str_val = repr(raw_val)
-                else:
-                    str_val = str(raw_val)
-            elif isinstance(val, bytes):
+                val = val.get_value()
+
+            # Décodage des bytes
+            if isinstance(val, bytes):
                 try:
-                    str_val = val.decode("utf-8", errors="replace")
+                    val_str = val.decode("utf-8", errors="replace")
                 except:
-                    str_val = repr(val)
+                    val_str = repr(val)
             else:
-                str_val = str(val)
+                val_str = str(val)
 
-            # Nettoyer et remplacer les retours à la ligne parasites
-            str_val = str_val.replace("\r", "\\r").replace("\n", "\\n")
+            # Échapper clairement les retours à la ligne
+            val_str = val_str.replace("\r", "\\r").replace("\n", "\\n")
 
-            formatted_values.append(str_val)
+            parsed_values.append(val_str)
 
-        # Si un attribut a plusieurs valeurs, chacune est affichée séparément
-        if len(formatted_values) > 1:
-            lines.append(f"{attr_name}:")
-            for single_val in formatted_values:
-                lines.append(f"  - {single_val}")
+        # Formatage final
+        if len(parsed_values) == 1:
+            lines.append(f"{attr_name}: {parsed_values[0]}")
         else:
-            lines.append(f"{attr_name}: {formatted_values[0]}")
+            lines.append(f"{attr_name}:")
+            for single_val in parsed_values:
+                lines.append(f"  - {single_val}")
 
-    # Chaque attribut clairement séparé par une nouvelle ligne
     return "\n".join(lines)
 
 
