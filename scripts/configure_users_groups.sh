@@ -13,12 +13,13 @@ trap 'echo "Erreur à la ligne $LINENO ! Vérifier $LOG_FILE"; exit 1' ERR
 echo "====================" | tee -a "$LOG_FILE"
 
 #############################
-# 1. Suppression automatique des OU existantes
+# 1. Suppression automatique des OU existantes (sauf l'OU principale NS)
 #############################
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Recherche et suppression automatique des OU existantes (sauf l'OU principale NS)..." | tee -a "$LOG_FILE"
 
-samba-tool ou list SRV-NS | while read -r OU; do
-    if [[ "$OU" != "OU=NS,DC=northstar,DC=com" ]]; then
+# On liste les OU à partir du DN racine
+samba-tool ou list "DC=northstar,DC=com" | while read -r OU; do
+    if [[ "$OU" != "OU=NS,DC=northstar,DC=com" && -n "$OU" ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression de l'OU : $OU" | tee -a "$LOG_FILE"
         samba-tool ou delete "$OU" | tee -a "$LOG_FILE"
         echo "$(date '+%Y-%m-%d %H:%M:%S') - OU $OU supprimée." | tee -a "$LOG_FILE"
@@ -31,10 +32,15 @@ echo "====================" | tee -a "$LOG_FILE"
 # 2. Création des OU
 #############################
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'OU principale NS..." | tee -a "$LOG_FILE"
-samba-tool ou create "OU=NS,DC=northstar,DC=com" | tee -a "$LOG_FILE"
-echo "$(date '+%Y-%m-%d %H:%M:%S') - OU NS créée avec succès." | tee -a "$LOG_FILE"
+samba-tool ou create "OU=NS,DC=northstar,DC=com" 2>/dev/null || echo "OU NS existe déjà" | tee -a "$LOG_FILE"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - OU NS créée ou déjà existante." | tee -a "$LOG_FILE"
 
-# Liste des OU à créer
+# Création des OU parents indispensables
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des OU parent (Workstations et Users)..." | tee -a "$LOG_FILE"
+samba-tool ou create "OU=Workstations,OU=NS,DC=northstar,DC=com" 2>/dev/null || echo "OU Workstations existe déjà" | tee -a "$LOG_FILE"
+samba-tool ou create "OU=Users,OU=NS,DC=northstar,DC=com" 2>/dev/null || echo "OU Users existe déjà" | tee -a "$LOG_FILE"
+
+# Liste des sous-OU à créer sous les conteneurs Workstations et Users
 OU_LIST=(
     "OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
     "OU=AdminWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
@@ -45,8 +51,8 @@ OU_LIST=(
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des autres OU..." | tee -a "$LOG_FILE"
 for OU in "${OU_LIST[@]}"; do
-    samba-tool ou create "$OU" | tee -a "$LOG_FILE"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - OU $OU créée avec succès." | tee -a "$LOG_FILE"
+    samba-tool ou create "$OU" 2>/dev/null || echo "OU $OU existe déjà" | tee -a "$LOG_FILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - OU $OU créée ou déjà existante." | tee -a "$LOG_FILE"
 done
 
 echo "====================" | tee -a "$LOG_FILE"
@@ -56,11 +62,11 @@ echo "====================" | tee -a "$LOG_FILE"
 #############################
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des utilisateurs répartis dans des OU spécifiques..." | tee -a "$LOG_FILE"
 
-# Déclaration d'un tableau associatif pour mapper chaque utilisateur à une OU spécifique
+# Tableau associatif : chaque utilisateur est mappé à l'OU relative (sans les DC) dans laquelle il doit être créé
 declare -A USERS_MAP
-USERS_MAP["Victor_Hugo"]="OU=Comptabilité,OU=Users,OU=NS,DC=northstar,DC=com"
-USERS_MAP["Jean_Delafontaine"]="OU=Finance,OU=Users,OU=NS,DC=northstar,DC=com"
-USERS_MAP["George_Clemenceau"]="OU=Administration,OU=Users,OU=NS,DC=northstar,DC=com"
+USERS_MAP["Victor_Hugo"]="OU=Comptabilité,OU=Users,OU=NS"
+USERS_MAP["Jean_Delafontaine"]="OU=Finance,OU=Users,OU=NS"
+USERS_MAP["George_Clemenceau"]="OU=Administration,OU=Users,OU=NS"
 
 # Fichier pour sauvegarder les identifiants générés
 USER_FILE="/root/northstar_users.txt"
