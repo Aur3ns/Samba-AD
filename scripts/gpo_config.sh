@@ -5,7 +5,7 @@
 # À exécuter en tant que root.
 
 
-set -x 
+set -e 
 
 ###############################################
 # 0. Création des templates de paramètres .pol
