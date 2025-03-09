@@ -4,8 +4,8 @@
 #
 # À exécuter en tant que root.
 
-set -e
-#set -x  # Décommentez cette ligne pour le débogage
+
+set -x 
 
 ###############################################
 # 0. Création des templates de paramètres .pol
