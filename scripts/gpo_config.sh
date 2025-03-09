@@ -193,13 +193,14 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     # Extraction du GUID à partir du champ "dn" du bloc
     ########################################################
     # Extraction du GUID à partir du champ "dn" du bloc
-    GPO_GUID=$(samba-tool gpo listall | grep -E "^(display name|dn)" | awk -v gpo="$GPO_NAME" '
+    # Extraction du GUID à partir du champ "dn" du bloc
+    GPO_GUID=$(samba-tool gpo listall 2>/dev/null | grep -E "^(display name|dn)" | awk -v gpo="$GPO_NAME" '
         BEGIN { IGNORECASE = 1 }
         /^display name[ \t]+:/ {
             if ($NF == gpo) {
-                while(getline > 0) {
+                while (getline > 0) {
                     if ($0 ~ /^dn[ \t]+:/) {
-                        # Extraction du GUID du champ CN, par exemple :
+                        # Extraction du GUID contenu dans le champ CN, par exemple :
                         # dn           : CN={31B2F340-016D-11D2-945F-00C04FB984F9},CN=Policies,...
                         match($0, /CN=\{[^}]+\}/, a)
                         if (a[0] != "") {
@@ -211,6 +212,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
                 }
             }
         }')
+
 
     if [ -z "$GPO_GUID" ]; then
         log "❌ Erreur : Impossible de récupérer le GUID pour la GPO '$GPO_NAME'."
