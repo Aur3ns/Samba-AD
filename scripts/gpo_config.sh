@@ -181,12 +181,12 @@ log "✅ Permissions SYSVOL mises à jour !"
 log "🚀 Application des GPOs..."
 
 declare -A GPO_LIST=(
-    ["Disable_CMD"]="DC=northstar,DC=com"
-    ["Force_SMB_Encryption"]="DC=northstar,DC=com"
-    ["Block_Temp_Executables"]="DC=northstar,DC=com"
-    ["Disable_Telemetry"]="DC=northstar,DC=com"
-    ["NTP_Sync"]="DC=northstar,DC=com"
-    ["Security_Message"]="DC=northstar,DC=com"
+    ["Disable_CMD"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
+    ["Force_SMB_Encryption"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
+    ["Block_Temp_Executables"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
+    ["Disable_Telemetry"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
+    ["NTP_Sync"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
+    ["Security_Message"]="UsersWorkstation,OU=NS,DC=northstar,DC=com"
 )
 
 for GPO_NAME in "${!GPO_LIST[@]}"; do

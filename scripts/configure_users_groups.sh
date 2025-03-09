@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script complet pour configurer les OU, créer des utilisateurs (sans groupes personnalisés)
+# Script complet pour configurer les OU, créer des utilisateurs répartis dans des OU spécifiques
 # et appliquer les politiques de sécurité sur Samba AD.
 #
 # IMPORTANT : Sauvegardez vos données avant d'exécuter ce script en production.
@@ -17,9 +17,7 @@ echo "====================" | tee -a "$LOG_FILE"
 #############################
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Recherche et suppression automatique des OU existantes (sauf l'OU principale NS)..." | tee -a "$LOG_FILE"
 
-# La commande "samba-tool ou list" doit retourner une ligne par OU
 samba-tool ou list SRV-NS | while read -r OU; do
-    # Exclure l'OU principale NS
     if [[ "$OU" != "OU=NS,DC=northstar,DC=com" ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Suppression de l'OU : $OU" | tee -a "$LOG_FILE"
         samba-tool ou delete "$OU" | tee -a "$LOG_FILE"
@@ -32,17 +30,17 @@ echo "====================" | tee -a "$LOG_FILE"
 #############################
 # 2. Création des OU
 #############################
-# Création de l'OU principale "NS"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création de l'OU principale NS..." | tee -a "$LOG_FILE"
 samba-tool ou create "OU=NS,DC=northstar,DC=com" | tee -a "$LOG_FILE"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - OU NS créée avec succès." | tee -a "$LOG_FILE"
 
-# Définition d'un tableau des autres OU à recréer
+# Liste des OU à créer
 OU_LIST=(
-    "OU=AdminWorkstations,OU=NS,DC=northstar,DC=com"
-    "OU=Group_ADMT0,OU=NS,DC=northstar,DC=com"
-    "OU=Group_ADMT1,OU=NS,DC=northstar,DC=com"
-    "OU=Group_ADMT2,OU=NS,DC=northstar,DC=com"
+    "OU=UsersWorkstations,Workstations,OU=NS,DC=northstar,DC=com"
+    "OU=AdminWorkstations,Workstations,OU=NS,DC=northstar,DC=com"
+    "OU=Comptabilité,OU=Users,OU=NS,DC=northstar,DC=com"
+    "OU=Finance,OU=Users,OU=NS,DC=northstar,DC=com"
+    "OU=Administration,OU=Users,OU=NS,DC=northstar,DC=com"
 )
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des autres OU..." | tee -a "$LOG_FILE"
@@ -54,27 +52,26 @@ done
 echo "====================" | tee -a "$LOG_FILE"
 
 #############################
-# 3. Création des utilisateurs
+# 3. Création des utilisateurs répartis dans des OU spécifiques
 #############################
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des utilisateurs..." | tee -a "$LOG_FILE"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Création des utilisateurs répartis dans des OU spécifiques..." | tee -a "$LOG_FILE"
 
-# Liste des utilisateurs à créer
-USERS=(
-    "Hugo_ADMT0"
-    "Voltaire_ADMT1"
-    "Clemenceau_ADMT2"
-)
+# Déclaration d'un tableau associatif pour mapper chaque utilisateur à une OU spécifique
+declare -A USERS_MAP
+USERS_MAP["Victor_Hugo"]="OU=Comptabilité,OU=Users,OU=NS,DC=northstar,DC=com"
+USERS_MAP["Jean_Delafontaine"]="OU=Finance,OU=Users,OU=NS,DC=northstar,DC=com"
+USERS_MAP["George_Clemenceau"]="OU=Administration,OU=Users,OU=NS,DC=northstar,DC=com"
 
 # Fichier pour sauvegarder les identifiants générés
 USER_FILE="/root/northstar_users.txt"
 echo "" > "$USER_FILE"
 
-for USER in "${USERS[@]}"; do
+for USER in "${!USERS_MAP[@]}"; do
     PASSWORD=$(openssl rand -base64 16)
-    samba-tool user create "$USER" "$PASSWORD" | tee -a "$LOG_FILE"
-    # Les utilisateurs créés sont automatiquement ajoutés au groupe "Domain Users"
-    echo "$USER : $PASSWORD" >> "$USER_FILE"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur $USER créé avec mot de passe généré." | tee -a "$LOG_FILE"
+    OU_PATH=${USERS_MAP[$USER]}
+    samba-tool user create "$USER" "$PASSWORD" --userou="$OU_PATH" | tee -a "$LOG_FILE"
+    echo "$USER : $PASSWORD (OU: $OU_PATH)" >> "$USER_FILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Utilisateur $USER créé dans $OU_PATH avec mot de passe généré." | tee -a "$LOG_FILE"
 done
 
 chmod 600 "$USER_FILE"
@@ -107,4 +104,3 @@ apt autoclean -y | tee -a "$LOG_FILE"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - 🎉 Configuration des OU, utilisateurs et politiques de sécurité terminée avec succès !" | tee -a "$LOG_FILE"
 echo "====================" | tee -a "$LOG_FILE"
-
