@@ -192,24 +192,26 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     ########################################################
     # Extraction du GUID à partir du champ "dn" du bloc
     ########################################################
+    # Extraction du GUID à partir du champ "dn" du bloc
     GPO_GUID=$(samba-tool gpo listall 2>/dev/null | grep -E "^(display name|dn)" | awk -v gpo="$GPO_NAME" '
         BEGIN { IGNORECASE = 1 }
         /^display name[ \t]+:/ {
             if ($NF == gpo) {
                 while (getline > 0) {
                     if ($0 ~ /^dn[ \t]+:/) {
-                        # Extraction du GUID contenu dans le champ CN, par exemple :
-                        # dn           : CN={31B2F340-016D-11D2-945F-00C04FB984F9},CN=Policies,...
-                        match($0, /CN=\{[^}][^}]*\}/, a)
-                        if (a[0] != "") {
-                            gsub(/CN=\{|\}/, "", a[0])
-                            print a[0]
+                        # Découpe la ligne pour extraire le GUID
+                        split($0, arr, "CN={");
+                        if (length(arr) > 1) {
+                            split(arr[2], arr2, "},");
+                            print arr2[1];
                             exit
                         }
                     }
                 }
             }
         }')
+
+    
 
 
     if [ -z "$GPO_GUID" ]; then
