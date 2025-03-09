@@ -36,8 +36,8 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - OU NS créée avec succès." | tee -a "$LOG
 
 # Liste des OU à créer
 OU_LIST=(
-    "OU=UsersWorkstations,Workstations,OU=NS,DC=northstar,DC=com"
-    "OU=AdminWorkstations,Workstations,OU=NS,DC=northstar,DC=com"
+    "OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    "OU=AdminWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
     "OU=Comptabilité,OU=Users,OU=NS,DC=northstar,DC=com"
     "OU=Finance,OU=Users,OU=NS,DC=northstar,DC=com"
     "OU=Administration,OU=Users,OU=NS,DC=northstar,DC=com"
