@@ -1,7 +1,8 @@
 #!/bin/bash
 # Ce script crée le répertoire /root/gpo_templates avec les fichiers .pol pour les GPOs
 # (Disable_CMD, Force_SMB_Encryption, Block_Temp_Executables, Disable_Telemetry,
-# NTP_Sync et Security_Message) puis configure et applique ces GPOs sur Samba.
+# NTP_Sync et Security_Message) puis crée les objets GPO dans Samba, les lie aux OU
+# correspondantes, copie les paramètres dans le SYSVOL et met à jour GPT.ini.
 
 ###############################################
 # 0. Création des templates de paramètres .pol
@@ -105,7 +106,7 @@ else
 fi
 
 ########################################################
-# 3. Application des BONNES permissions sur le SYSVOL ou les GPOs seront stockées
+# 3. Application des bonnes permissions sur le SYSVOL
 ########################################################
 samba-tool ntacl sysvolreset
 chown -R root:root /var/lib/samba/sysvol
@@ -137,7 +138,7 @@ if [ ! -f "$SMB_PASSWD_FILE" ] || ! grep -q '^username=' "$SMB_PASSWD_FILE" || !
     log "✅ Fichier d'identifiants créé et sécurisé."
 fi
 
-# Lecture et nettoyage des identifiants
+# Nettoyage des identifiants
 ADMIN_USER=$(grep '^username=' "$SMB_PASSWD_FILE" | awk -F '=' '{gsub(/^ +| +$/, "", $2); print $2}')
 ADMIN_PASSWORD=$(grep '^password=' "$SMB_PASSWD_FILE" | awk -F '=' '{gsub(/^ +| +$/, "", $2); print $2}')
 
@@ -172,7 +173,7 @@ log "✅ DC accessible, on continue."
 log "🔍 Vérification et correction des permissions SYSVOL..."
 samba-tool ntacl sysvolreset | tee -a "$LOG_FILE"
 chown -R root:"Domain Admins" /var/lib/samba/sysvol
-chmod -R 770 /var/lib/samba/sysvol
+chmod -R 755 /var/lib/samba/sysvol
 log "✅ Permissions SYSVOL mises à jour !"
 
 ########################################################
@@ -180,6 +181,7 @@ log "✅ Permissions SYSVOL mises à jour !"
 ########################################################
 log "🚀 Application des GPOs..."
 
+# Tableau associatif : GPO_NAME -> OU de liaison
 declare -A GPO_LIST=(
     ["Disable_CMD"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
     ["Force_SMB_Encryption"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
@@ -187,6 +189,17 @@ declare -A GPO_LIST=(
     ["Disable_Telemetry"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
     ["NTP_Sync"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
     ["Security_Message"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+)
+
+# Tableau associatif pour définir le type de GPO (Machine ou User)
+# Ici, tous sont définis comme "Machine", modifiez au besoin.
+declare -A GPO_TYPE=(
+    ["Disable_CMD"]="Machine"
+    ["Force_SMB_Encryption"]="Machine"
+    ["Block_Temp_Executables"]="Machine"
+    ["Disable_Telemetry"]="Machine"
+    ["NTP_Sync"]="Machine"
+    ["Security_Message"]="Machine"
 )
 
 for GPO_NAME in "${!GPO_LIST[@]}"; do
@@ -203,14 +216,16 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     EXISTING_GPO=$(samba-tool gpo list "$ADMIN_USER" --use-kerberos=required | grep -E "^$GPO_NAME\s")
     if [ -z "$EXISTING_GPO" ]; then
         log "📌 Création de la GPO '$GPO_NAME'..."
-        samba-tool gpo create "$GPO_NAME" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
+        CREATE_OUTPUT=$(samba-tool gpo create "$GPO_NAME" --use-kerberos=required 2>&1)
+        echo "$CREATE_OUTPUT" >> "$LOG_FILE"
         sleep 2  # Délai pour s'assurer de la création
     else
         log "✅ La GPO '$GPO_NAME' existe déjà."
     fi
     
-    # Extraction du GUID de la GPO de manière robuste
+    # Extraction du GUID de la GPO (en utilisant une méthode robuste)
     GPO_GUID=$(samba-tool gpo listall --use-kerberos=required | awk -v gpo="$GPO_NAME" '
+        BEGIN { guid="" }
         /^GPO[ \t]+:/ { guid=$3 }
         /^display name[ \t]+:/ {
             if ($0 ~ gpo) {
@@ -225,9 +240,7 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
         exit 1
     fi
     
-    # Construction du dossier de la GPO
-    GPO_FOLDER="/var/lib/samba/sysvol/$DOMAIN/Policies/{$GPO_GUID}"
-    log "🔗 Lien de la GPO '$GPO_NAME' (GUID: {$GPO_GUID}) à l'OU '$OU_PATH'..."
+    log "🔗 Liaison de la GPO '$GPO_NAME' (GUID: {$GPO_GUID}) à l'OU '$OU_PATH'..."
     samba-tool gpo setlink "$OU_PATH" "{$GPO_GUID}" --use-kerberos=required 2>&1 | tee -a "$LOG_FILE"
     if [ "${PIPESTATUS[0]}" -ne 0 ]; then
         log "❌ Erreur : Impossible de lier la GPO '$GPO_NAME' à l'OU '$OU_PATH' !"
@@ -235,21 +248,48 @@ for GPO_NAME in "${!GPO_LIST[@]}"; do
     fi
     
     ########################################################
-    # 7.1 Application des paramètres de la GPO à partir d'un template
+    # 7.1 Application des paramètres à partir du template
     ########################################################
     TEMPLATE_FILE="$TEMPLATE_DIR/${GPO_NAME}.pol"
     if [ -f "$TEMPLATE_FILE" ]; then
-        mkdir -p "$GPO_FOLDER/Machine"
-        cp "$TEMPLATE_FILE" "$GPO_FOLDER/Machine/Registry.pol"
-        log "✅ Paramètres appliqués pour la GPO '$GPO_NAME'."
+        # Déterminer le type de GPO pour choisir le dossier de déploiement
+        TYPE="${GPO_TYPE[$GPO_NAME]}"
+        if [ "$TYPE" == "Machine" ]; then
+            TARGET_FOLDER="/var/lib/samba/sysvol/${DOMAIN}/Policies/{$GPO_GUID}/Machine/Microsoft/Windows/Group Policy"
+        else
+            TARGET_FOLDER="/var/lib/samba/sysvol/${DOMAIN}/Policies/{$GPO_GUID}/User/Microsoft/Windows/Group Policy"
+        fi
+        mkdir -p "$TARGET_FOLDER"
+        cp "$TEMPLATE_FILE" "$TARGET_FOLDER/Registry.pol"
+        log "✅ Paramètres appliqués pour la GPO '$GPO_NAME' dans $TYPE."
     else
         log "⚠️ Aucun template trouvé pour la GPO '$GPO_NAME'. Aucun paramètre appliqué."
     fi
+
+    ########################################################
+    # 7.2 Mise à jour (ou création) du fichier GPT.ini pour forcer la réapplication
+    ########################################################
+    GPO_FOLDER="/var/lib/samba/sysvol/${DOMAIN}/Policies/{$GPO_GUID}"
+    GPT_FILE="${GPO_FOLDER}/GPT.ini"
+    if [ ! -f "$GPT_FILE" ]; then
+        cat << 'EOF' > "$GPT_FILE"
+[General]
+Version=1
+EOF
+        log "✅ GPT.ini créé pour la GPO '$GPO_NAME'."
+    else
+        # Incrémente la version (on suppose que la version est un entier)
+        current_version=$(grep '^Version=' "$GPT_FILE" | cut -d'=' -f2)
+        new_version=$((current_version + 1))
+        sed -i "s/^Version=.*/Version=${new_version}/" "$GPT_FILE"
+        log "✅ GPT.ini mis à jour pour la GPO '$GPO_NAME' (Version ${new_version})."
+    fi
+
 done
 
 ########################################################
 # 8. Fin de la configuration
 ########################################################
 log "==============================="
-log "✅ Configuration complète des GPOs !"
+log "✅ Configuration complète des GPOs appliquée !"
 log "==============================="
