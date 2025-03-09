@@ -88,7 +88,6 @@ cat <<EOF > /etc/samba/smb.conf
     ldap timeout = 15
     allow unsafe cluster upgrade = no
     clustering = no
-    ntp signd = yes
     rpc server dynamic port range = 50000-55000
     tls enabled = yes
     tls keyfile = /etc/samba/private/tls.key
