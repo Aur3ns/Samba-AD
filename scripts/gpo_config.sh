@@ -181,12 +181,12 @@ log "✅ Permissions SYSVOL mises à jour !"
 log "🚀 Application des GPOs..."
 
 declare -A GPO_LIST=(
-    ["Disable_CMD"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
-    ["Force_SMB_Encryption"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
-    ["Block_Temp_Executables"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
-    ["Disable_Telemetry"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
-    ["NTP_Sync"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
-    ["Security_Message"]="OU=UsersWorkstation,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["Disable_CMD"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["Force_SMB_Encryption"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["Block_Temp_Executables"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["Disable_Telemetry"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["NTP_Sync"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
+    ["Security_Message"]="OU=UsersWorkstations,OU=Workstations,OU=NS,DC=northstar,DC=com"
 )
 
 for GPO_NAME in "${!GPO_LIST[@]}"; do
