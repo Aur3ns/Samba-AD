@@ -1,7 +1,7 @@
 #!/bin/bash
 
 LOG_FILE="/var/log/samba-ad-setup.log"
-REALM="NORTHSTAR.COM"
+REALM="northstar.com"
 DOMAIN="NORTHSTAR"
 NETBIOS_NAME="SRV-NS"
 SAMBA_ADMIN_PASS="@fterTheB@ll33/"  # À CHANGER AVEC UN MOT DE PASSE SÉCURISÉ
