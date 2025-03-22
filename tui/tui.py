@@ -16,6 +16,38 @@ from samba_ad import (
     reset_password
 )
 
+# --- Fonctions utilitaires pour éviter les erreurs "addstr() returned ERR" ---
+def safe_addstr(win, y, x, text, style=0):
+    """
+    Écrit la chaîne 'text' à la position (y, x) de la fenêtre 'win',
+    en vérifiant qu’on ne dépasse pas les bornes.
+    Troncation du texte si nécessaire.
+    """
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y:
+        if 0 <= x < max_x:
+            # Tronquer le texte si on dépasse à droite
+            if x + len(text) > max_x:
+                text = text[:max_x - x]
+            try:
+                win.addstr(y, x, text, style)
+            except curses.error:
+                pass  # On ignore simplement l'erreur
+
+def safe_hline(win, y, x, ch, n, style=0):
+    """
+    Dessine une ligne horizontale à la position (y, x),
+    de longueur n, en vérifiant les bornes.
+    """
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y and 0 <= x < max_x:
+        if x + n > max_x:
+            n = max_x - x
+        try:
+            win.hline(y, x, ch, n, style)
+        except curses.error:
+            pass
+
 # --- Couleurs et initialisation ---
 def init_colors():
     if curses.has_colors():
@@ -67,9 +99,10 @@ def animate_intro(stdscr):
     
     for frame in loading_frames:
         stdscr.erase()
-        stdscr.addstr(max_y // 2 - 1, (max_x - len("SYSTEM BOOTING...")) // 2, "SYSTEM BOOTING...", curses.A_BOLD)
-        stdscr.addstr(max_y // 2, (max_x - len(frame)) // 2, frame, curses.A_BOLD)
-        stdscr.addstr(max_y // 2 + 1, (max_x - len("PLEASE WAIT...")) // 2, "PLEASE WAIT...", curses.A_DIM)
+        center_y = max_y // 2
+        safe_addstr(stdscr, center_y - 1, (max_x - len("SYSTEM BOOTING...")) // 2, "SYSTEM BOOTING...", curses.A_BOLD)
+        safe_addstr(stdscr, center_y, (max_x - len(frame)) // 2, frame, curses.A_BOLD)
+        safe_addstr(stdscr, center_y + 1, (max_x - len("PLEASE WAIT...")) // 2, "PLEASE WAIT...", curses.A_DIM)
         stdscr.refresh()
         time.sleep(0.2)
 
@@ -87,17 +120,26 @@ def draw_ascii_header(win, domain_info):
     ]     
     max_y, max_x = win.getmaxyx()
     start_y = 1
+
+    # Affichage de l'ASCII art, en vérifiant qu'on reste dans les limites
     for i, line in enumerate(ascii_art):
-        win.addstr(start_y + i, max((max_x - len(line)) // 2, 0),
-                   line, curses.color_pair(1) | curses.A_BOLD)
+        row = start_y + i
+        col = max((max_x - len(line)) // 2, 0)
+        safe_addstr(win, row, col, line, curses.color_pair(1) | curses.A_BOLD)
+
+    # Infos domaine
     info_str = f"Domaine : {domain_info['domain_name']}    Utilisateur : {domain_info['user']}"
-    win.addstr(start_y + len(ascii_art) + 1,
-               max((max_x - len(info_str)) // 2, 0),
-               info_str, curses.A_BOLD)
+    row = start_y + len(ascii_art) + 1
+    col = max((max_x - len(info_str)) // 2, 0)
+    safe_addstr(win, row, col, info_str, curses.A_BOLD)
+
+    # Spinner en haut à droite
     spinner = get_spinner()
-    win.addstr(0, max_x - 3, spinner, curses.color_pair(1) | curses.A_BOLD)
+    safe_addstr(win, 0, max_x - 3, spinner, curses.color_pair(1) | curses.A_BOLD)
+
     # Ligne horizontale
-    win.hline(start_y + len(ascii_art) + 2, 0, curses.ACS_HLINE, max_x)
+    safe_hline(win, start_y + len(ascii_art) + 2, 0, curses.ACS_HLINE, max_x)
+
     win.refresh()
 
 def draw_tab_bar(win, current_tab, tabs):
@@ -106,12 +148,14 @@ def draw_tab_bar(win, current_tab, tabs):
     max_y, max_x = win.getmaxyx()
     x = 2
     for idx, tab in enumerate(tabs):
+        text = f" {tab} "
         if idx == current_tab:
-            win.addstr(0, x, f" {tab} ", curses.color_pair(2) | curses.A_BOLD)
+            safe_addstr(win, 0, x, text, curses.color_pair(2) | curses.A_BOLD)
         else:
-            win.addstr(0, x, f" {tab} ")
-        x += len(tab) + 3
-    win.hline(1, 0, curses.ACS_HLINE, max_x)
+            safe_addstr(win, 0, x, text)
+        x += len(text) + 1
+
+    safe_hline(win, 1, 0, curses.ACS_HLINE, max_x)
     win.refresh()
 
 def draw_status_bar(win, message):
@@ -122,13 +166,11 @@ def draw_status_bar(win, message):
     win.clear()
     max_y, max_x = win.getmaxyx()
     status = message if message else "h = Aide | ESC = Quitter"
-    win.addstr(0, 0, status[:max_x-1], curses.color_pair(4))
+    safe_addstr(win, 0, 0, status[:max_x-1], curses.color_pair(4))
     win.refresh()
 
 def get_items_for_tab(current_tab, data):
-    """
-    Retourne la liste d'éléments correspondant à l'onglet courant.
-    """
+    """Retourne la liste d'éléments correspondant à l'onglet courant."""
     if current_tab == 0:  # Dashboard
         return list(data['dashboard'].items())
     elif current_tab == 1:
@@ -153,7 +195,7 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
         items = [item for item in items if filter_str.lower() in str(item).lower()]
 
     height, width = win.getmaxyx()
-    max_len = width - 3  # marge pour éviter débordement
+    max_len = width - 3
 
     if current_tab == 0:
         # Dashboard : items est une liste de tuples (clé, valeur)
@@ -162,10 +204,8 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
             line = f"{str(key).ljust(key_width)} : {value}"
             if len(line) > max_len:
                 line = line[:max_len]
-            if idx == selected_index:
-                win.addstr(idx + 1, 1, line, curses.color_pair(3))
-            else:
-                win.addstr(idx + 1, 1, line)
+            style = curses.color_pair(3) if idx == selected_index else 0
+            safe_addstr(win, idx + 1, 1, line, style)
     else:
         for idx, item in enumerate(items):
             if isinstance(item, dict):
@@ -203,10 +243,8 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
 
             if len(display_text) > max_len:
                 display_text = display_text[:max_len]
-            if idx == selected_index:
-                win.addstr(idx + 1, 1, display_text, curses.color_pair(3))
-            else:
-                win.addstr(idx + 1, 1, display_text)
+            style = curses.color_pair(3) if idx == selected_index else 0
+            safe_addstr(win, idx + 1, 1, display_text, style)
 
     win.box()
     win.refresh()
@@ -243,21 +281,18 @@ def draw_content(win, current_tab, data, selected_index, filter_str):
             wrapped_lines.extend(sub_lines)
 
     max_width = width - 4
-    for i in range(len(wrapped_lines)):
-        if len(wrapped_lines[i]) > max_width:
-            wrapped_lines[i] = wrapped_lines[i][:max_width]
-
     row = 1
     for wline in wrapped_lines:
+        if len(wline) > max_width:
+            wline = wline[:max_width]
         if row >= height - 1:
             break
-        win.addstr(row, 2, wline)
+        safe_addstr(win, row, 2, wline)
         row += 1
 
     win.box()
     win.refresh()
 
-# --- Fonction utilitaire pour parser/trier les attributs Samba ---
 def parse_samba_attrs(attrs):
     """
     Parse et formate clairement les attributs LDAP (Samba AD).
@@ -284,10 +319,7 @@ def parse_samba_attrs(attrs):
                     str_val = repr(val)
             else:
                 str_val = str(val)
-
-            # Nettoyer et remplacer les retours à la ligne parasites
             str_val = str_val.replace("\r", "\\r").replace("\n", "\\n")
-
             formatted_values.append(str_val)
 
         if len(formatted_values) > 1:
@@ -307,6 +339,8 @@ def display_modal_text(stdscr, title, text):
     width = max_x * 7 // 10
     start_y = (max_y - height) // 2
     start_x = (max_x - width) // 2
+
+    # Découpage du texte pour l'affichage
     wrapped_lines = []
     for line in text.splitlines():
         sub_lines = textwrap.wrap(line, width=width - 4)
@@ -314,29 +348,38 @@ def display_modal_text(stdscr, title, text):
             wrapped_lines.append("")
         else:
             wrapped_lines.extend(sub_lines)
+
     win = curses.newwin(height, width, start_y, start_x)
     win.box()
     truncated_title = title[:width - 4]
-    win.addstr(0, 2, truncated_title, curses.A_BOLD)
+    safe_addstr(win, 0, 2, truncated_title, curses.A_BOLD)
+
     top_line = 0
     visible_height = height - 2
+
     while True:
+        # Effacer la zone intérieure
         for r in range(1, height - 1):
-            win.move(r, 1)
-            win.clrtoeol()
+            safe_addstr(win, r, 1, " " * (width - 2))
+
         row = 1
         for i in range(top_line, min(top_line + visible_height, len(wrapped_lines))):
-            win.addstr(row, 2, wrapped_lines[i][:width - 4])
+            wline = wrapped_lines[i]
+            if len(wline) > width - 4:
+                wline = wline[:width - 4]
+            safe_addstr(win, row, 2, wline)
             row += 1
+
         win.box()
         win.refresh()
+
         ch = stdscr.getch()
         if ch == curses.KEY_UP:
             top_line = max(top_line - 1, 0)
         elif ch == curses.KEY_DOWN:
             if top_line + visible_height < len(wrapped_lines):
                 top_line += 1
-        elif ch == 27 or ch == ord('q') or ch == curses.KEY_EXIT:
+        elif ch in (27, ord('q'), curses.KEY_EXIT):
             break
 
 def modal_input(stdscr, title, prompt):
@@ -344,11 +387,16 @@ def modal_input(stdscr, title, prompt):
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
     width = max(len(prompt) + 20, 50)
-    win = curses.newwin(5, width, max_y//2 - 2, (max_x - width)//2)
+    height = 5
+    start_y = max_y//2 - 2
+    start_x = (max_x - width)//2
+    win = curses.newwin(height, width, start_y, start_x)
     win.box()
-    win.addstr(0, 2, title, curses.A_BOLD)
-    win.addstr(2, 2, prompt)
+    safe_addstr(win, 0, 2, title, curses.A_BOLD)
+    safe_addstr(win, 2, 2, prompt)
     win.refresh()
+
+    # On récupère la saisie
     input_val = win.getstr(2, len(prompt) + 3, 100).decode('utf-8')
     curses.noecho()
     return input_val
@@ -360,11 +408,15 @@ def modal_input_multiple(stdscr, title, prompts):
     max_y, max_x = stdscr.getmaxyx()
     width = max(max((len(p) for p in prompts)) + 20, 60)
     height = len(prompts) + 4
-    win = curses.newwin(height, width, max_y//2 - height//2, (max_x - width)//2)
+    start_y = max_y//2 - height//2
+    start_x = (max_x - width)//2
+
+    win = curses.newwin(height, width, start_y, start_x)
     win.box()
-    win.addstr(0, 2, title, curses.A_BOLD)
+    safe_addstr(win, 0, 2, title, curses.A_BOLD)
+
     for idx, prompt in enumerate(prompts):
-        win.addstr(idx+2, 2, prompt)
+        safe_addstr(win, idx+2, 2, prompt)
         win.refresh()
         resp = win.getstr(idx+2, len(prompt) + 3, 100).decode('utf-8')
         responses[prompt] = resp
@@ -376,9 +428,12 @@ def modal_confirm(stdscr, prompt):
     curses.echo()
     max_y, max_x = stdscr.getmaxyx()
     width = len(prompt) + 10
-    win = curses.newwin(3, width, max_y//2 - 1, (max_x - width)//2)
+    height = 3
+    start_y = max_y//2 - 1
+    start_x = (max_x - width)//2
+    win = curses.newwin(height, width, start_y, start_x)
     win.box()
-    win.addstr(1, 2, prompt)
+    safe_addstr(win, 1, 2, prompt)
     win.refresh()
     ch = win.getch()
     curses.noecho()
@@ -467,7 +522,7 @@ def main_tui(stdscr, domain_info):
     stdscr.nodelay(False)
     stdscr.timeout(100)
 
-    # Réduction de la hauteur du header de 9 à 6 pour plus d'espace en bas
+    # Réduction de la hauteur du header pour laisser plus de place en bas
     header_height = 6
     tab_height = 3
     status_height = 1
@@ -663,10 +718,13 @@ def show_help(stdscr):
     ]
     height = len(help_text) + 4
     width = max(len(line) for line in help_text) + 4
-    win = curses.newwin(height, width, max((max_y - height)//2, 0), max((max_x - width)//2, 0))
+    start_y = max((max_y - height)//2, 0)
+    start_x = max((max_x - width)//2, 0)
+
+    win = curses.newwin(height, width, start_y, start_x)
     win.box()
     for idx, line in enumerate(help_text):
-        win.addstr(idx+1, 2, line)
+        safe_addstr(win, idx+1, 2, line)
     win.refresh()
     win.getch()
 
