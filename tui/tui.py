@@ -12,7 +12,8 @@ from samba_ad import (
     list_users, create_user, delete_user,
     list_computers, create_computer, delete_computer, move_computer,
     refresh_data,
-    modify_object, get_object_attributes, search_objects, move_object, rename_object
+    modify_object, get_object_attributes, search_objects, move_object, rename_object,
+    reset_password
 )
 
 # --- Couleurs et initialisation ---
@@ -79,10 +80,10 @@ def draw_ascii_header(win, domain_info):
     """Affiche l'ASCII art, le spinner et les infos de domaine/utilisateur en haut."""
     win.clear()
     ascii_art = [
-		"	__  ______     ______ _   __       ",
-		"  	/| )/  )/__)/  )__/(   /  /_| /__) ", 
-	    "  / |/(__// ( (  /  /__) (  (  |/ (   ",
-        "                                      "                                                                                       
+        "	__  ______     ______ _   __       ",
+        "  	/| )/  )/__)/  )__/(   /  /_| /__) ", 
+        "  / |/(__// ( (  /  /__) (  (  |/ (   ",
+        "                                      "
     ]     
     max_y, max_x = win.getmaxyx()
     start_y = 1
@@ -118,7 +119,7 @@ def draw_status_bar(win, message):
     max_y, max_x = win.getmaxyx()
     status = message if message else (
         "F1: Aide | F5: Actualiser | /: Filtrer | c: Créer | d: Supprimer | "
-        "a: Attributs | m: Modifier | r: Renommer | v: Déplacer | S: Recherche | "
+        "a: Attributs | m: Modifier | r: Renommer | v: Déplacer | p: Réinitialiser mot de passe | S: Recherche | "
         "←/→: Onglets | ↑/↓: Navigation | ESC: Quitter"
     )
     win.addstr(0, 0, status[:max_x-1], curses.color_pair(4))
@@ -299,8 +300,6 @@ def parse_samba_attrs(attrs):
 
     # Chaque attribut clairement séparé par une nouvelle ligne
     return "\n".join(lines)
-
-
 
 def display_modal_text(stdscr, title, text):
     """Affiche une fenêtre modale scrollable (80% de l'écran)."""
@@ -547,6 +546,18 @@ def main_tui(stdscr, domain_info):
             data['recherche'] = []
             selected_index = 0
 
+        # Réinitialiser le mot de passe (pour les utilisateurs)
+        elif key == ord('p'):
+            if current_tab == 4:  # Onglet Utilisateurs
+                items = get_items_for_tab(current_tab, data)
+                if items:
+                    selected_item = items[selected_index]
+                    username = selected_item.get("sAMAccountName", "")
+                    if username:
+                        new_pwd = modal_input(stdscr, "Réinitialiser mot de passe", f"Nouveau mot de passe pour {username}: ")
+                        if new_pwd:
+                            notification = reset_password(domain_info["samdb"], domain_info["domain_dn"], username, new_pwd)
+
         # Rafraîchir
         elif key == curses.KEY_F5:
             data = refresh_data(domain_info)
@@ -644,13 +655,14 @@ def show_help(stdscr):
         "m  : Modifier les attributs (attr=val;...)",
         "r  : Renommer l'objet (nouveau RDN)",
         "v  : Déplacer l'objet (nouveau DN)",
+        "p  : Réinitialiser le mot de passe d’un utilisateur",
         "S  : Recherche avancée (base DN, filtre LDAP, attributs)",
-        "←/→ : Changer d'onglet",
-        "↑/↓ : Navigation dans la liste",
+        "←/→: Changer d'onglet",
+        "↑/↓: Navigation dans la liste",
         "ESC : Quitter l'application",
         "",
         "Dans l'onglet 'Recherche', vous pouvez sélectionner un objet, puis",
-        "utiliser les mêmes raccourcis (a, m, r, v, d) s'il possède un DN."
+        "utiliser les mêmes raccourcis (a, m, r, v, d, p) s'il possède un DN."
     ]
     height = len(help_text) + 4
     width = max(len(line) for line in help_text) + 4
