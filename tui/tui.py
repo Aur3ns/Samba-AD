@@ -96,6 +96,7 @@ def draw_ascii_header(win, domain_info):
                info_str, curses.A_BOLD)
     spinner = get_spinner()
     win.addstr(0, max_x - 3, spinner, curses.color_pair(1) | curses.A_BOLD)
+    # Ligne horizontale
     win.hline(start_y + len(ascii_art) + 2, 0, curses.ACS_HLINE, max_x)
     win.refresh()
 
@@ -114,21 +115,19 @@ def draw_tab_bar(win, current_tab, tabs):
     win.refresh()
 
 def draw_status_bar(win, message):
-    """Affiche la barre de statut en bas."""
+    """
+    Affiche la barre de statut en bas.
+    On remplace l'ancienne liste de raccourcis par un simple "h = Aide | ESC = Quitter".
+    """
     win.clear()
     max_y, max_x = win.getmaxyx()
-    status = message if message else (
-        "F1: Aide | F5: Actualiser | /: Filtrer | c: Créer | d: Supprimer | "
-        "a: Attributs | m: Modifier | r: Renommer | v: Déplacer | p: Réinitialiser mot de passe | S: Recherche | "
-        "←/→: Onglets | ↑/↓: Navigation | ESC: Quitter"
-    )
+    status = message if message else "h = Aide | ESC = Quitter"
     win.addstr(0, 0, status[:max_x-1], curses.color_pair(4))
     win.refresh()
 
 def get_items_for_tab(current_tab, data):
     """
     Retourne la liste d'éléments correspondant à l'onglet courant.
-    Pour les onglets riches, on retourne directement la liste de dictionnaires.
     """
     if current_tab == 0:  # Dashboard
         return list(data['dashboard'].items())
@@ -169,8 +168,8 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
                 win.addstr(idx + 1, 1, line)
     else:
         for idx, item in enumerate(items):
-            # Si l'item est un dictionnaire, on affiche selon l'onglet
             if isinstance(item, dict):
+                # Selon l'onglet, on affiche différemment
                 if current_tab == 1:  # OUs
                     display_text = f"OU : {item.get('name', '')}"
                 elif current_tab == 2:  # Groupes
@@ -201,6 +200,7 @@ def draw_sidebar(win, current_tab, data, selected_index, filter_str):
                     display_text = f"Ordinateur : {item}"
                 else:
                     display_text = str(item)
+
             if len(display_text) > max_len:
                 display_text = display_text[:max_len]
             if idx == selected_index:
@@ -290,7 +290,6 @@ def parse_samba_attrs(attrs):
 
             formatted_values.append(str_val)
 
-        # Si un attribut a plusieurs valeurs, chacune est affichée séparément
         if len(formatted_values) > 1:
             lines.append(f"{attr_name}:")
             for single_val in formatted_values:
@@ -298,7 +297,6 @@ def parse_samba_attrs(attrs):
         else:
             lines.append(f"{attr_name}: {formatted_values[0]}")
 
-    # Chaque attribut clairement séparé par une nouvelle ligne
     return "\n".join(lines)
 
 def display_modal_text(stdscr, title, text):
@@ -387,10 +385,7 @@ def modal_confirm(stdscr, prompt):
     return (chr(ch).lower() == 'y')
 
 def get_dn_for_selected(current_tab, selected_item, domain_info):
-    """
-    Construit le DN en fonction de l'onglet et de l'élément sélectionné.
-    Si l'objet est un dictionnaire, on utilise la clé 'dn'.
-    """
+    """Construit le DN en fonction de l'onglet et de l'élément sélectionné."""
     dn = None
     if isinstance(selected_item, dict) and "dn" in selected_item:
         dn = selected_item["dn"]
@@ -472,6 +467,11 @@ def main_tui(stdscr, domain_info):
     stdscr.nodelay(False)
     stdscr.timeout(100)
 
+    # Réduction de la hauteur du header de 9 à 6 pour plus d'espace en bas
+    header_height = 6
+    tab_height = 3
+    status_height = 1
+
     # Onglets : 0=Dashboard, 1=OUs, 2=Groupes, 3=GPOs, 4=Utilisateurs, 5=Ordinateurs, 6=Recherche
     tabs = ["Dashboard", "OUs", "Groupes", "GPOs", "Utilisateurs", "Ordinateurs", "Recherche"]
     current_tab = 0
@@ -483,9 +483,6 @@ def main_tui(stdscr, domain_info):
     data['recherche'] = []
 
     max_y, max_x = stdscr.getmaxyx()
-    header_height = 9
-    tab_height = 3
-    status_height = 1
     content_height = max_y - header_height - tab_height - status_height
     sidebar_width = max_x // 3
     content_width = max_x - sidebar_width
@@ -558,14 +555,14 @@ def main_tui(stdscr, domain_info):
                         if new_pwd:
                             notification = reset_password(domain_info["samdb"], domain_info["domain_dn"], username, new_pwd)
 
-        # Rafraîchir
+        # Rafraîchir (F5)
         elif key == curses.KEY_F5:
             data = refresh_data(domain_info)
             data['recherche'] = []
             notification = "Données actualisées."
 
-        # Aide
-        elif key == curses.KEY_F1:
+        # Aide avec la touche h
+        elif key == ord('h'):
             show_help(stdscr)
 
         # Afficher attributs
@@ -646,19 +643,19 @@ def show_help(stdscr):
     max_y, max_x = stdscr.getmaxyx()
     help_text = [
         "Aide - Raccourcis clavier:",
-        "F1 : Afficher cette aide",
+        "h  : Afficher cette aide",
         "F5 : Actualiser les données",
         "/  : Filtrer la liste",
         "c  : Créer un nouvel objet (selon l'onglet)",
         "d  : Supprimer l'objet sélectionné",
+        "p  : Réinitialiser le mot de passe d’un utilisateur (onglet Utilisateurs)",
         "a  : Afficher tous les attributs de l'objet",
         "m  : Modifier les attributs (attr=val;...)",
         "r  : Renommer l'objet (nouveau RDN)",
         "v  : Déplacer l'objet (nouveau DN)",
-        "p  : Réinitialiser le mot de passe d’un utilisateur",
         "S  : Recherche avancée (base DN, filtre LDAP, attributs)",
-        "←/→: Changer d'onglet",
-        "↑/↓: Navigation dans la liste",
+        "←/→ : Changer d'onglet",
+        "↑/↓ : Navigation dans la liste",
         "ESC : Quitter l'application",
         "",
         "Dans l'onglet 'Recherche', vous pouvez sélectionner un objet, puis",
