@@ -178,18 +178,20 @@ def delete_user(samdb, domain_dn, user_name):
 # --- Fonction de réinitialisation de mot de passe ---
 def reset_password(samdb, domain_dn, username, new_password):
     """
-    Réinitialise le mot de passe d’un utilisateur Samba AD.
-    Samba attend que le mot de passe soit encodé en UTF-16LE et entouré de guillemets.
+    Réinitialise le mot de passe d’un utilisateur Samba AD en utilisant l'API native.
     """
     try:
-        user_dn = f"CN={username},CN=Users,{domain_dn}"
-        modifications = {
-            "unicodePwd": [('"'+new_password+'"').encode("utf-16-le")]
-        }
-        samdb.modify(user_dn, modifications, [])
+        expression = f"(sAMAccountName={username})"
+        samdb.setpassword(
+            expression,
+            new_password,
+            force_change_at_next_login=False,
+            username=None  # L'utilisateur exécutant l'opération est déjà authentifié via `samdb`
+        )
         return f"[OK] Mot de passe réinitialisé pour '{username}'."
     except Exception as e:
         return f"[ERROR] Impossible de réinitialiser le mot de passe pour '{username}' : {e}"
+
 
 # --- Fonctions de gestion des Ordinateurs ---
 def list_computers(samdb, domain_dn):
