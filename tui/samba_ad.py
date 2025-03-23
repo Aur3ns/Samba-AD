@@ -186,7 +186,7 @@ def reset_password(samdb, domain_dn, username, new_password):
         modifications = {
             "unicodePwd": [('"'+new_password+'"').encode("utf-16-le")]
         }
-        samdb.modify(user_dn, modifications)
+        samdb.modify(user_dn, modifications, controls=[])
         return f"[OK] Mot de passe réinitialisé pour '{username}'."
     except Exception as e:
         return f"[ERROR] Impossible de réinitialiser le mot de passe pour '{username}' : {e}"
