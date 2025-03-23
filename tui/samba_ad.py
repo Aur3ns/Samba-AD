@@ -26,7 +26,7 @@ def detect_domain_settings(admin_user, admin_password):
         # Récupération du nom de domaine via l'attribut "dc"
         result = samdb.search(base=domain_dn, expression="(objectClass=domain)", attrs=["dc"])
         domain_name = result[0]["dc"][0]
-        # Si nécessaire, décoder les bytes
+        # Décodage si nécessaire
         if isinstance(domain_dn, bytes):
             domain_dn = domain_dn.decode("utf-8", errors="replace")
         if isinstance(domain_name, bytes):
@@ -134,7 +134,6 @@ def delete_gpo(samdb, domain_dn, gpo_name):
 
 # --- Fonctions de gestion des Utilisateurs ---
 def list_users(samdb, domain_dn):
-    # Récupération enrichie : cn, sAMAccountName, description, dn
     users = samdb.search(base=domain_dn, expression="(&(objectClass=user)(!(sAMAccountName=krbtgt)))", 
                          attrs=["cn", "sAMAccountName", "description", "dn"])
     result = []
@@ -251,12 +250,18 @@ def modify_object(samdb, dn, modifications):
     except Exception as e:
         return f"[ERROR] Modification de l'objet {dn} a échoué : {e}"
 
-def get_object_attributes(samdb, dn):
+def get_object_attributes(samdb, dn, all_attrs=False):
     """
-    Récupère l'ensemble des attributs de l'objet identifié par 'dn'.
+    Récupère les attributs de l'objet identifié par 'dn'.
+    - all_attrs=False : on récupère un ensemble limité d'attributs (plus rapide et stable)
+    - all_attrs=True  : on récupère tous les attributs (attrs=["*"]), ce qui est complet mais peut être lourd
     """
     try:
-        result = samdb.search(base=dn, scope=0, attrs=["*"])
+        if all_attrs:
+            result = samdb.search(base=dn, scope=0, attrs=["*"])
+        else:
+            default_attrs = ["cn", "description", "member", "objectClass", "distinguishedName"]
+            result = samdb.search(base=dn, scope=0, attrs=default_attrs)
         return result[0] if result else None
     except Exception as e:
         return f"[ERROR] Impossible d'obtenir les attributs de l'objet {dn} : {e}"
@@ -293,7 +298,6 @@ def rename_object(samdb, old_dn, new_rdn):
     except Exception as e:
         return f"[ERROR] Échec du renommage de l'objet : {e}"
 
-# --- Fonction de rafraîchissement des données pour l'interface ---
 def refresh_data(domain_info):
     """
     Rafraîchit et retourne les données pour chaque onglet (OUs, Groupes, GPOs, Utilisateurs, Ordinateurs).
