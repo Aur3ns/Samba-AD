@@ -39,7 +39,7 @@ systemctl restart rsyslog
 
 echo "[*] Création de la tâche cron quotidienne (clamdscan)..."
 cat <<EOF > /etc/cron.d/clamav-fullscan
-0 0 * * * root ionice -c3 -n7 nice -n19 clamdscan --infected --multiscan --fdpass / > /dev/null 2>&1
+0 0 * * * root ionice -c3 -n7 nice -n19 clamdscan --infected --multiscan --fdpass --remove=yes / > /dev/null 2>&1
 EOF
 
 chmod 644 /etc/cron.d/clamav-fullscan
