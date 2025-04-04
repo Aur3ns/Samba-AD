@@ -12,7 +12,7 @@ ionice -c3 -n7 nice -n19 clamdscan -r --multiscan --fdpass / >> "$LOGFILE" 2>&1
 echo "[$TIMESTAMP] [*] Scan terminé. Vérification des fichiers infectés..." >> "$LOGFILE"
 
 # === Rediriger les infections vers le log lu par Wazuh ===
-grep FOUND "$LOGFILE" >> /var/log/clamav/clamd.log
+grep FOUND "$LOGFILE" >> /var/log/clamav/clamd-forwarded.log
 
 # === Suppression des fichiers infectés ===
 grep FOUND "$LOGFILE" | cut -d: -f1 | while read -r file; do
