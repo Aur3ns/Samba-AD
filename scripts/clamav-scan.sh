@@ -2,30 +2,26 @@
 
 # === Paramètres ===
 LOGFILE="/var/log/clamav/clamdscan.log"
-FORWARDED_LOG="/var/log/clamav/clamd-forwarding.log"
+FORWARD_LOG="/var/log/clamav/clamd-forwarding.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-echo "[$TIMESTAMP] [★] Beginning of the ClamAV scan..." >> "$LOGFILE"
+echo "[$TIMESTAMP] [✳] Beginning of the ClamAV scan..." >> "$LOGFILE"
 
 # === Scan complet avec clamdscan ===
 ionice -c3 -n7 nice -n19 clamdscan -r --multiscan --fdpass /tmp >> "$LOGFILE" 2>&1
 
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-echo "[$TIMESTAMP] [✓] Scan Completed. Checking infected files..." >> "$LOGFILE"
+echo "[$TIMESTAMP] [✔] Scan Completed. Checking infected files..." >> "$LOGFILE"
 
-# === Rediriger les infections et suppressions vers le log lu par Wazuh ===
-grep -E 'FOUND|ClamAv: Removed' "$LOGFILE" >> "$FORWARDED_LOG"
-
-# === Suppression des fichiers infectés ===
-grep -E '^[^:]+: .*FOUND$' "$LOGFILE" | cut -d: -f1 | while read -r file; do
-  TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+# === Suppression des fichiers infectés (et log REMOVED pour Wazuh) ===
+grep "FOUND" "$LOGFILE" | while IFS= read -r line; do
+  file=$(echo "$line" | cut -d: -f1)
   if [ -f "$file" ]; then
-    echo "[$TIMESTAMP] ClamAv: Removed : $file" | tee -a "$LOGFILE" >> "$FORWARDED_LOG"
+    # Même format que FOUND mais avec REMOVED
+    echo "$line" | sed 's/FOUND/REMOVED/' | tee -a "$LOGFILE" >> "$FORWARD_LOG"
     rm -f "$file"
   else
-    echo "[$TIMESTAMP] [?] ClamAv Error: File not found : $file" >> "$LOGFILE"
+    echo "[$TIMESTAMP] [?] ClamAV Error: File not found : $file" >> "$LOGFILE"
   fi
 done
 
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-echo "[$TIMESTAMP] [✓] ClamAv Deletion completed" >> "$LOGFILE"
+echo "[$TIMESTAMP] [-] ClamAV Deletion completed" >> "$LOGFILE"
