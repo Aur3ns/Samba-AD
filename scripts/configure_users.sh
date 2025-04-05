@@ -90,14 +90,30 @@ echo "====================" | tee -a "$LOG_FILE"
 #############################
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Application des politiques de mots de passe..." | tee -a "$LOG_FILE"
 
+# Active la complexité du mot de passe (exige la présence de lettres majuscules, minuscules, chiffres et symboles)
 samba-tool domain passwordsettings set --complexity=on | tee -a "$LOG_FILE"
+
+# Définit l'historique des mots de passe à 24, empêchant ainsi la réutilisation des 24 derniers mots de passe
 samba-tool domain passwordsettings set --history-length=24 | tee -a "$LOG_FILE"
+
+# Définit l'âge minimum d'un mot de passe à 1 jour (l'utilisateur ne peut pas changer son mot de passe avant 1 jour)
 samba-tool domain passwordsettings set --min-pwd-age=1 | tee -a "$LOG_FILE"
+
+# Définit l'âge maximum d'un mot de passe à 90 jours (le mot de passe doit être changé au moins tous les 90 jours)
 samba-tool domain passwordsettings set --max-pwd-age=90 | tee -a "$LOG_FILE"
+
+# Définit la longueur minimale du mot de passe à 14 caractères
 samba-tool domain passwordsettings set --min-pwd-length=14 | tee -a "$LOG_FILE"
+
+# Définit le seuil de verrouillage du compte à 5 tentatives échouées (après 5 échecs, le compte est verrouillé)
 samba-tool domain passwordsettings set --account-lockout-threshold=5 | tee -a "$LOG_FILE"
+
+# Définit la durée du verrouillage du compte à 30 minutes
 samba-tool domain passwordsettings set --account-lockout-duration=30 | tee -a "$LOG_FILE"
+
+# Définit le délai de réinitialisation du compteur de verrouillage à 15 minutes (après 15 minutes, le compteur d'échecs est remis à zéro)
 samba-tool domain passwordsettings set --reset-account-lockout-after=15 | tee -a "$LOG_FILE"
+
 
 echo "====================" | tee -a "$LOG_FILE"
 
