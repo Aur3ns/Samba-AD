@@ -94,6 +94,13 @@ cat <<EOF > /etc/samba/smb.conf
     tls certfile = /etc/samba/private/tls.crt
     tls cafile = /etc/samba/private/tls-ca.crt
 
+[Commun]
+    comment = Partage commun pour tout les utilisateurs
+    path = /etc/samba/shared
+    browseable = yes
+    read only = no
+    guest ok = no
+
 [sysvol]
     path = /var/lib/samba/sysvol
     read only = no
