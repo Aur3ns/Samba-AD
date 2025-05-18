@@ -1,20 +1,34 @@
-The Samba-AD project is a suite of Shell and Python scripts designed to automate the deployment and management of a Linux-based Active Directory Domain Controller. Driven by a lightweight text-based interface, it covers every essential step:
+# Samba-AD
 
-Domain creation & configuration
-With a single command, Samba is installed, the AD domain is provisioned, and DNS/Kerberos services are configured to work together securely and reliably.
+The Samba-AD project is a suite of Shell and Python scripts designed to automate the deployment and management of a Linux-based Active Directory Domain Controller driven by a lightweight text-based interface in python.
 
-Centralized administration
-Users and groups can be imported, modified or deleted in bulk via scripts, eliminating manual errors and streamlining day-to-day management.
+---
 
-Share protection
-ClamAV is deployed automatically on all CIFS/SMB shares, with scheduled scans and alert notifications to ensure continuous data protection.
+## Key Features
 
-Operational monitoring
-The Wazuh agent is installed and configured to centralize domain logs, detect anomalies, and generate security or performance alerts.
+- **Domain Creation & Configuration**  
+  Install Samba, provision your AD domain, and configure DNS/Kerberos in one go—securely and reliably.
 
-Windows admin made easy
-A PowerShell script produces an RSAT installer package (.msi) ready for deployment on Windows workstations, so administrators can manage the domain from their familiar tools.
+- **Centralized Administration**  
+  Import, modify or delete users and groups in bulk via scripts, eliminating manual errors and speeding up daily tasks.
 
-The text-based interface (TUI) lets you manage user accounts, groups, OUs, computers and GPOs without a graphical console or dedicated admin workstation.
+- **Share Protection**  
+  Auto-deploy ClamAV on all CIFS/SMB shares, schedule regular scans and receive alerts for continuous data security.
 
-It can be run on any Linux distribution.
+- **Operational Monitoring**  
+  Install and configure the Wazuh agent to centralize logs, detect anomalies, and generate security or performance alerts.
+
+- **Windows Admin Made Easy**  
+  Generate an RSAT installer package (.msi) with a PowerShell script—deployable on Windows workstations for seamless domain management.
+
+---
+
+## Text-Based Interface (TUI)
+
+Manage user accounts, groups, OUs, computers and GPOs—**no GUI or dedicated admin workstation needed**. Navigate a clear, keyboard-driven menu and watch real-time progress and logs.
+
+---
+
+## Compatibility
+
+Runs on **any Linux distribution** with Python 3 and standard shell tools installed.
